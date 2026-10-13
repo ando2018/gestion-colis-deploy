@@ -272,11 +272,21 @@ ${liste.map((c) => `<tr><td>${echapper(c.numero)}</td><td>${c.nbPieces}</td><td>
 </table><p><small>Liste à jour au ${new Date().toLocaleString('fr-FR')}</small></p></body></html>`);
   }
 
-  // Front Angular compilé (production) : web/dist/web/browser
-  const front = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist/web/browser');
-  if (fs.existsSync(front)) {
+  // Front Angular compilé (production) : web/dist/web/browser, ou le dossier indiqué par DOSSIER_WEB
+  const front = process.env.DOSSIER_WEB
+    ? path.resolve(process.env.DOSSIER_WEB)
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist/web/browser');
+  if (fs.existsSync(path.join(front, 'index.html'))) {
     app.use(express.static(front));
     app.get('/{*chemin}', (_req, res) => res.sendFile(path.join(front, 'index.html')));
+    if (!process.env.NODE_TEST_CONTEXT) console.log(`Écran servi depuis ${front}`);
+  } else {
+    // Sans build : seule l'API répond (« Cannot GET /connexion »). Le chemin attendu est affiché pour corriger.
+    if (!process.env.NODE_TEST_CONTEXT) console.warn(`⚠ Écran compilé introuvable : ${path.join(front, 'index.html')} — compilez web/ (npm run build) ou réglez DOSSIER_WEB, puis redémarrez.`);
+    app.get('/', (_req, res) => res.status(503).type('text/plain; charset=utf-8')
+      .send(`Écran compilé introuvable sur le serveur.
+Attendu : ${path.join(front, 'index.html')}
+Compilez web/ (npm run build) ou réglez DOSSIER_WEB dans api/.env, puis redémarrez l'application.`));
   }
 
   app.use((err, _req, res, _next) => {
