@@ -1,0 +1,1 @@
+var t=e=>(e.toUpperCase().replace(/[^A-Z0-9]/g,``).slice(0,12).match(/.{1,3}/g)??[]).join(`-`);var n=/^[A-Z0-9]{3}(-[A-Z0-9]{3}){3}$/;export{t as n,n as t};

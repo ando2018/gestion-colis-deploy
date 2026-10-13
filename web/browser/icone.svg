@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b7bf0"/>
+      <stop offset="1" stop-color="#173f99"/>
+    </linearGradient>
+    <linearGradient id="dessus" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1cf9a"/>
+      <stop offset="1" stop-color="#ddb072"/>
+    </linearGradient>
+    <linearGradient id="gauche" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c99157"/>
+      <stop offset="1" stop-color="#b7803f"/>
+    </linearGradient>
+    <linearGradient id="droite" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a26c33"/>
+      <stop offset="1" stop-color="#8f5c28"/>
+    </linearGradient>
+    <linearGradient id="ruban" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e8c891"/>
+      <stop offset="1" stop-color="#d7b277"/>
+    </linearGradient>
+    <radialGradient id="ombre" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- fond de l'icône -->
+  <rect width="512" height="512" rx="112" fill="url(#fond)"/>
+  <circle cx="400" cy="96" r="150" fill="#fff" opacity=".07"/>
+
+  <!-- ombre au sol -->
+  <ellipse cx="262" cy="430" rx="190" ry="34" fill="url(#ombre)"/>
+
+  <!-- colis : faces gauche, droite, dessus -->
+  <path d="M76 190 L256 268 L256 446 L76 368 Z" fill="url(#gauche)"/>
+  <path d="M256 268 L436 190 L436 368 L256 446 Z" fill="url(#droite)"/>
+  <path d="M256 112 L436 190 L256 268 L76 190 Z" fill="url(#dessus)"/>
+
+  <!-- arêtes -->
+  <path d="M76 190 L256 268 L436 190 M256 268 L256 446" fill="none" stroke="#7a4b1d" stroke-opacity=".35" stroke-width="3"/>
+  <path d="M256 112 L436 190 L436 368 L256 446 L76 368 L76 190 Z" fill="none" stroke="#6b4018" stroke-opacity=".45" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- ruban adhésif sur le dessus et la face gauche -->
+  <path d="M146 160 L326 238 L366 221 L186 143 Z" fill="url(#ruban)" opacity=".95"/>
+  <path d="M146 160 L186 143 L186 143 Z" fill="none"/>
+  <path d="M326 238 L366 221 L366 300 L326 317 Z" fill="#c9a064" opacity=".9"/>
+  <path d="M146 160 L326 238" stroke="#fff" stroke-opacity=".35" stroke-width="2"/>
+
+  <!-- étiquette d'expédition sur la face gauche -->
+  <g transform="matrix(1 0.433 0 1 104 0)">
+    <rect x="0" y="232" width="104" height="80" rx="6" fill="#fdfdfb"/>
+    <rect x="10" y="242" width="54" height="8" rx="3" fill="#1f5fd1"/>
+    <rect x="10" y="256" width="78" height="5" rx="2.5" fill="#9aa3b5"/>
+    <rect x="10" y="266" width="62" height="5" rx="2.5" fill="#9aa3b5"/>
+    <g fill="#1d2330">
+      <rect x="10" y="280" width="3" height="22"/><rect x="16" y="280" width="2" height="22"/><rect x="21" y="280" width="4" height="22"/>
+      <rect x="28" y="280" width="2" height="22"/><rect x="33" y="280" width="3" height="22"/><rect x="39" y="280" width="2" height="22"/>
+      <rect x="44" y="280" width="4" height="22"/><rect x="51" y="280" width="2" height="22"/><rect x="56" y="280" width="3" height="22"/>
+      <rect x="62" y="280" width="2" height="22"/><rect x="67" y="280" width="4" height="22"/><rect x="74" y="280" width="2" height="22"/>
+      <rect x="79" y="280" width="3" height="22"/><rect x="85" y="280" width="2" height="22"/><rect x="90" y="280" width="4" height="22"/>
+    </g>
+  </g>
+
+  <!-- pictogrammes « haut » et « fragile » sur la face droite -->
+  <g transform="matrix(1 -0.433 0 1 0 0)" fill="#5a3412" opacity=".55">
+    <path d="M330 452 l14 -18 l14 18 h-9 v16 h-10 v-16 z"/>
+    <path d="M370 452 l14 -18 l14 18 h-9 v16 h-10 v-16 z"/>
+  </g>
+
+  <!-- reflet sur le dessus -->
+  <path d="M256 112 L436 190 L400 205 L222 127 Z" fill="#fff" opacity=".18"/>
+</svg>
