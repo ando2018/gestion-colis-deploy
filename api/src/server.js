@@ -6,5 +6,5 @@ import { seed } from './seed.js';
 await mongoose.connect(process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/gestion-colis?replicaSet=rs0');
 await mongoose.syncIndexes();
 await seed();
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 3001);
 creerApp().listen(port, () => console.log(`API prête sur http://localhost:${port}`));

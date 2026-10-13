@@ -106,7 +106,7 @@ export const Parametres = modeleEntreprise('Parametres', new Schema({
   reliquatAlerteReports: { type: Number, default: 2 },
   reliquatAlerteJours: { type: Number, default: 7 },
   bloquerPartielAuChargement: { type: Boolean, default: true },
-  urlPublique: { type: String, default: 'http://localhost:3000' },
+  urlPublique: { type: String, default: 'http://localhost:3001' },
   typeCode: { type: String, enum: TYPES_CODE, default: 'QR' },
   /** Nom affiché sur toutes les pages, les reçus et les étiquettes (remplace « Gestion colis »). */
   nomApplication: { type: String, default: 'Gestion colis', trim: true, maxlength: 40 },

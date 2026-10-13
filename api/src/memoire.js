@@ -9,5 +9,5 @@ const rs = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine:
 await mongoose.connect(rs.getUri('gestion-colis'));
 await mongoose.syncIndexes();
 await seed({ demo: true });
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 3001);
 creerApp().listen(port, () => console.log(`API (base en mémoire) sur http://localhost:${port}`));

@@ -422,8 +422,10 @@ test('administration : modification d’un dépôt, messages clairs et valeurs p
 
 test('liste des colis : période et tri par date pour l’export', async () => {
   const agent = await connexion('reception@colis.local');
-  const aujourdhui = new Date().toISOString().slice(0, 10);
-  const demain = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  // Dates locales (comme le filtre de l'API), pas UTC : sinon le test échoue peu après minuit.
+  const local = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const aujourdhui = local(new Date());
+  const demain = local(new Date(Date.now() + 86400000));
   const anciens = ok(await appel(agent, 'GET', `/api/colis?du=${aujourdhui}&au=${aujourdhui}&tri=ancien&export=1&limite=5000`));
   assert.ok(anciens.length > 0);
   const t = anciens.map((c) => new Date(c.dateReception).getTime());
