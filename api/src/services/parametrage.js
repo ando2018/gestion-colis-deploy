@@ -1,11 +1,11 @@
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import {
-  Colis, COLIS, Conteneur, CONTENEUR, Depot, Message, Destination, Evenement, ModePaiement, Palette, PALETTE, Parametres, ROLES, Utilisateur,
+  Colis, COLIS, Conteneur, CONTENEUR, Depot, Destination, Evenement, ModePaiement, Palette, PALETTE, Parametres, ROLES, Utilisateur,
 } from '../modeles.js';
 import { conflit, filtreDepot, introuvable, journaliser, requete, texte } from '../noyau.js';
 import { codeProvisoire, poserCodeProvisoire } from '../acces.js';
-import { envoyerCodeProvisoire, normaliserSmtp, origineRequete, testerSmtp, vueSmtp } from '../courriel.js';
+import { envoyerCodeProvisoire, origineRequete } from '../courriel.js';
 
 /** Champs modifiables par référentiel (les autres sont ignorés). */
 const REFERENTIELS = {
@@ -96,61 +96,14 @@ export async function modifierRef(req, ref, id, b) {
 }
 
 export async function parametres() {
-  // Mot de passe SMTP lu pour savoir s'il est enregistré, puis retiré (vueSmtp).
-  const p = (await Parametres.findById('general').select('+smtp.motDePasse').lean()) ?? (await Parametres.create({ _id: 'general' })).toObject();
-  return { ...p, smtp: vueSmtp(p.smtp) };
-}
-
-/** SMTP de l'entreprise : mot de passe gardé s'il n'est pas ressaisi. */
-export async function modifierSmtp(req, b) {
-  const ancien = (await Parametres.findById('general').select('+smtp.motDePasse').lean())?.smtp ?? {};
-  const smtp = normaliserSmtp(b, ancien);
-  await Parametres.updateOne({ _id: 'general' }, { $set: { smtp } }, { upsert: true });
-  await journaliser(req, null, 'PARAMETRAGE', { entite: 'parametrage', numero: 'smtp', details: { ...vueSmtp(smtp) } });
-  return vueSmtp(smtp);
-}
-
-/** E-mail de test avec les réglages saisis (mot de passe enregistré si non ressaisi). */
-export async function testerSmtpEntreprise(req, b) {
-  const p = await Parametres.findById('general').select('+smtp.motDePasse').lean();
-  const smtp = normaliserSmtp({ ...b?.smtp, actif: true }, p?.smtp ?? {});
-  return testerSmtp(smtp, b?.a, p?.nomApplication || 'Gestion colis', req.user.nom);
-}
-
-// ───────────── Messages envoyés ─────────────
-
-const echapperRegex = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** E-mails envoyés (plus récents d'abord), filtrés par recherche (destinataire, objet), motif ou statut ; sans le HTML. */
-export async function messages(q) {
-  const filtre = {};
-  const t = texte(q?.q);
-  if (t) {
-    const r = new RegExp(echapperRegex(t), 'i');
-    filtre.$or = [{ a: r }, { sujet: r }, { destinataireNom: r }];
-  }
-  if (['creation', 'reinitialisation', 'test'].includes(q?.motif)) filtre.motif = q.motif;
-  if (q?.statut === 'envoye') filtre.envoye = true;
-  if (q?.statut === 'echec') filtre.envoye = false;
-  const limite = Math.min(500, Math.max(1, Number(q?.limite) || 200));
-  const [liste, total] = await Promise.all([
-    Message.find(filtre, { html: 0 }).sort({ date: -1 }).limit(limite).lean(),
-    Message.countDocuments(filtre),
-  ]);
-  return { total, messages: liste };
-}
-
-export async function message(id) {
-  if (!mongoose.isValidObjectId(id)) throw introuvable('Message introuvable');
-  const m = await Message.findById(id).lean();
-  if (!m) throw introuvable('Message introuvable');
-  return m;
+  const { smtp, ...p } = (await Parametres.findById('general').lean()) ?? (await Parametres.create({ _id: 'general' })).toObject();
+  return p; // l'envoi des e-mails se règle sur la plateforme, pas dans l'entreprise
 }
 
 export async function modifierParametres(req, b) {
   const champs = ['paletteMaxKg', 'typesConteneur', 'reliquatAlerteReports', 'reliquatAlerteJours', 'bloquerPartielAuChargement', 'urlPublique', 'typeCode', 'nomApplication'];
   const avant = await parametres();
-  const apres = await Parametres.findByIdAndUpdate('general', { $set: garder(b, champs) }, { returnDocument: 'after', upsert: true, runValidators: true }).lean();
+  const { smtp, ...apres } = await Parametres.findByIdAndUpdate('general', { $set: garder(b, champs) }, { returnDocument: 'after', upsert: true, runValidators: true }).lean();
   await journaliser(req, null, 'PARAMETRAGE', { entite: 'parametrage', numero: 'parametres', avant, apres });
   return apres;
 }

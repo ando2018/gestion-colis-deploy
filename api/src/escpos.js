@@ -74,7 +74,8 @@ export function ticketsColis(colis, destination, { largeurMm = 80, typeCode = 'Q
     tickets.push(Buffer.concat([
       INIT, centre, gras(true), inverse(true), taille(1, 2), ligne(` ${nomApp} `), inverse(false), taille(1, 1), ligne(''),
       taille(3, 3), ligne(colis.destination), taille(1, 1), ligne((destination?.ville ?? colis.destination).toUpperCase()),
-      taille(2, 2), ligne(`COLIS ${i}/${colis.nbPieces}  ${String(colis.poidsKg).replace('.', ',')} kg`), taille(1, 1), ligne(''),
+      taille(2, 2), ligne(`COLIS ${colis.rangEnvoi ?? 1}/${colis.nbEnvoi ?? 1}  ${String(colis.poidsKg).replace('.', ',')} kg`), taille(1, 1),
+      ligne(colis.nbPieces > 1 ? `piece ${i}/${colis.nbPieces}` : ''),
       typeCode === 'CODE_BARRE' ? Buffer.concat([codeLisible(code, largeurMm, 120, colis.code), ligne(colis.numero)]) : qr(code, large ? 8 : 6), ligne(''),
       separateur(largeurMm), gauche,
       ligne('DESTINATAIRE'), taille(1, 2), ligne(colis.destinataire?.nom ?? ''), taille(1, 1), ligne(`Tel. ${telMasque(colis.destinataire?.tel)}`),

@@ -11,6 +11,7 @@ import { etatLicence } from './licence.js';
 import { authentifier, avecDepot, entrepriseActive, ErreurMetier, estCodeCourt, exiger, interdit, signer } from './noyau.js';
 import * as plateforme from './services/plateforme.js';
 import * as contact from './services/contact.js';
+import * as exporter from './services/export.js';
 import * as colis from './services/colis.js';
 import * as conteneurs from './services/conteneurs.js';
 import * as impression from './services/impression.js';
@@ -53,6 +54,11 @@ export function creerApp() {
   pf.put('/smtp', async (req, res) => res.json(await plateforme.modifierSmtp(req.body ?? {})));
   pf.post('/smtp/test', async (req, res) => res.json(await plateforme.testerSmtpPlateforme(req.body ?? {})));
   pf.put('/entreprises/:id', async (req, res) => res.json(await plateforme.modifier(req.params.id, req.body ?? {})));
+  pf.get('/entreprises/:id/manuel', async (req, res) => {
+    const { nom, pdf } = await plateforme.telechargerManuel(req.params.id, origineRequete(req));
+    res.type('application/pdf').set('Content-Disposition', `inline; filename="${nom}"`).send(pdf);
+  });
+  pf.post('/entreprises/:id/manuel', async (req, res) => res.json(await plateforme.renvoyerManuel(req.params.id, req.body ?? {}, origineRequete(req), req.admin)));
   pf.post('/entreprises/:id/licence', async (req, res) => res.json(await plateforme.renouvelerLicence(req.params.id, req.body ?? {}, req.admin)));
   pf.post('/entreprises/:id/administrateur', async (req, res) => res.json(await plateforme.administrateur(req.params.id, req.body ?? {}, origineRequete(req))));
   pf.get('/entreprises/:id/utilisateurs', async (req, res) => res.json(await plateforme.utilisateurs(req.params.id)));
@@ -169,15 +175,10 @@ export function creerApp() {
   }
   api.get('/parametres', async (_req, res) => res.json(await param.parametres()));
   api.put('/parametres', exiger(ADMIN), async (req, res) => res.json(await param.modifierParametres(req, req.body ?? {})));
-  api.put('/parametres/smtp', exiger(ADMIN), async (req, res) => res.json(await param.modifierSmtp(req, req.body ?? {})));
-  api.post('/parametres/smtp/test', exiger(ADMIN), async (req, res) => res.json(await param.testerSmtpEntreprise(req, req.body ?? {})));
   // Contact : message vers l'administrateur de la plateforme (permis même jeton expiré, pour demander le renouvellement)
   api.get('/contact/editeur', async (_req, res) => res.json((await contact.reglagesContact()).editeur));
   api.get('/contact', async (req, res) => res.json(await contact.messagesEntreprise(req)));
   api.post('/contact', async (req, res) => res.status(201).json(await contact.envoyerMessage(req, req.body ?? {}, origineRequete(req))));
-  // E-mails envoyés : copie exacte (Administration → Messages)
-  api.get('/messages', exiger(ADMIN), async (req, res) => res.json(await param.messages(req.query)));
-  api.get('/messages/:id', exiger(ADMIN), async (req, res) => res.json(await param.message(req.params.id)));
   api.put('/parametres/logo', exiger(ADMIN), async (req, res) => res.json(await param.modifierLogo(req, req.body ?? {})));
   api.get('/utilisateurs', exiger(ADMIN), async (_req, res) => res.json(await param.listeUtilisateurs()));
   api.post('/utilisateurs', exiger(ADMIN), async (req, res) => res.status(201).json(await param.creerUtilisateur(req, req.body ?? {})));
@@ -244,6 +245,12 @@ export function creerApp() {
     res.json(await impression.imprimer(req, req.params.type, req.params.numero, req.body ?? {})));
   api.get('/evenements', async (req, res) => res.json(await param.evenements(req, req.query)));
   api.get('/tableau-de-bord', async (req, res) => res.json(await param.tableauDeBord(req)));
+  // Export détaillé des colis (avec palette et conteneur) : CSV, Excel, PDF
+  api.get('/export/colis/apercu', exiger(ADMIN), async (req, res) => res.json(await exporter.apercu(req, req.query)));
+  api.get('/export/colis', exiger(ADMIN), async (req, res) => {
+    const f = await exporter.fichier(req, req.query);
+    res.type(f.type).set('Content-Disposition', `attachment; filename="${f.nom}"`).send(f.contenu);
+  });
   api.get('/statistiques', exiger(ADMIN), async (req, res) => res.json(await stats.statistiques(req, req.query)));
 
   api.use((_req, res) => res.status(404).json({ erreur: 'Route inconnue' }));

@@ -154,6 +154,9 @@ export const Colis = modeleEntreprise('Colis', new Schema({
   /** Code-barres : 8 chiffres (1 = colis, 2 = palette, 3 = conteneur), court donc imprimé avec des barres larges. */
   code: { type: String, unique: true, sparse: true },
   envoi: { type: String, default: null, index: true }, // numéro du premier colis de l'envoi (C1, C2… même expéditeur et destinataire)
+  /** Place du colis dans son envoi : colis 1/2, 2/2… (étiquette, suivi). */
+  rangEnvoi: { type: Number, default: 1 },
+  nbEnvoi: { type: Number, default: 1 },
   depot: { type: String, required: true },
   destination: { type: String, required: true },
   expediteur: { ...Personne, pieceIdentite: { type: String, default: '' } },
@@ -228,7 +231,8 @@ export const Message = modeleEntreprise('Message', new Schema({
   sujet: { type: String, default: '' },
   texte: { type: String, default: '' },
   html: { type: String, default: '' },
-  motif: { type: String, enum: ['creation', 'reinitialisation', 'test'], required: true },
+  motif: { type: String, enum: ['creation', 'reinitialisation', 'test', 'manuel'], required: true },
+  piecesJointes: { type: [String], default: [] },
   envoye: { type: Boolean, default: false },
   erreur: { type: String, default: '' },
   par: { type: String, default: '' }, // qui a déclenché l'envoi (admin de l'entreprise ou plateforme)

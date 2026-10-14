@@ -84,7 +84,8 @@ export async function receptionnerEnvoi(req, b) {
       throw requete(`Colis ${i + 1} : montant modifié (${montantCalcule} → ${montant}), motif obligatoire`, 'MOTIF_REQUIS');
     }
     return {
-      description: texte(l.description),
+      // Sans description saisie : « Colis 1 », « Colis 2 »… (seul le poids est à remplir)
+      description: texte(l.description) || `Colis ${i + 1}`,
       nbPieces: Math.max(1, parseInt(l.nbPieces, 10) || 1),
       poidsKg,
       dimensions: texte(l.dimensions),
@@ -128,6 +129,8 @@ export async function receptionnerEnvoi(req, b) {
         numero,
         code: await codeCourt('colis', session),
         envoi,
+        rangEnvoi: crees.length + 1,
+        nbEnvoi: colisPrepares.length,
         depot: depot.code,
         destination: destination.code,
         expediteur: { nom: texte(b.expediteur.nom), tel: texte(b.expediteur.tel), pieceIdentite: texte(b.expediteur.pieceIdentite) },

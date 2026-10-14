@@ -9,6 +9,7 @@
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "memoire": "node --env-file-if-exists=.env src/memoire.js",
     "seed": "node --env-file-if-exists=.env src/seed.js",
+    "manuel:captures": "node manuel/captures.mjs",
     "mongo": "docker compose up -d",
     "mongo:arret": "docker compose stop",
     "test": "node --test test/"
@@ -18,12 +19,16 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "exceljs": "4.4",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.1",
-    "nodemailer": "^7.0.13"
+    "nodemailer": "^7.0.13",
+    "pdfkit": "^0.17.2",
+    "qrcode": "1.5"
   },
   "devDependencies": {
-    "mongodb-memory-server": "^11.3.0"
+    "mongodb-memory-server": "^11.3.0",
+    "playwright-core": "1.56"
   }
 }

@@ -85,6 +85,13 @@ export async function seedEntreprise({ demo = false, admin = null, nomApplicatio
     for (const x of sansCode) await modele.updateOne({ _id: x._id }, { $set: { code: await codeCourt(type) } });
     if (sansCode.length) console.log(`${sansCode.length} ${type} : code-barres numérique attribué`);
   }
+  // Rattrapage : place de chaque colis dans son envoi (colis 1/2, 2/2…) pour les colis d'avant ce champ
+  const envois = await Colis.distinct('envoi', { nbEnvoi: { $exists: false }, envoi: { $ne: null } });
+  for (const envoi of envois) {
+    const liste = await Colis.find({ envoi }, { _id: 1 }).sort({ numero: 1 }).lean();
+    await Colis.bulkWrite(liste.map((c, i) => ({ updateOne: { filter: { _id: c._id }, update: { $set: { rangEnvoi: i + 1, nbEnvoi: liste.length } } } })));
+  }
+  if (envois.length) console.log(`${envois.length} envoi(s) : place des colis renseignée`);
   const upsert = (modele, code, valeurs) => modele.updateOne({ code }, { $setOnInsert: { code, ...valeurs } }, { upsert: true });
   if (admin) {
     // Nouvelle entreprise : son administrateur et les modes de paiement usuels (modifiables dans Administration).

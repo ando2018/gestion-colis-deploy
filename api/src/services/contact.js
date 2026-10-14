@@ -38,12 +38,10 @@ async function destinatairesNotification() {
   return (await AdminPlateforme.find({ actif: true }, { email: 1 }).lean()).map((a) => a.email);
 }
 
-/** Serveur d'envoi de la notification : celui de la plateforme, sinon celui de l'entreprise. */
+/** Serveur d'envoi de la notification : celui de la plateforme. */
 async function smtpNotification() {
   const pf = await ParametresPlateforme.findById('plateforme').select('+smtp.motDePasse').lean();
-  if (pf?.smtp?.actif && pf.smtp.hote) return pf.smtp;
-  const p = await Parametres.findById('general').select('+smtp.motDePasse').lean();
-  return p?.smtp?.actif && p.smtp.hote ? p.smtp : null;
+  return pf?.smtp?.actif && pf.smtp.hote ? pf.smtp : null;
 }
 
 /** Nouveau message d'un utilisateur de l'entreprise courante vers la plateforme, puis notification par e-mail. */

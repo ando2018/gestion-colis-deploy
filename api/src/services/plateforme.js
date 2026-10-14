@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import { AdminPlateforme, ParametresPlateforme, CODE_ENTREPRISE, Colis, Entreprise, normaliserCodeEntreprise, Parametres, ROLES, Utilisateur, Depot, Evenement } from '../modeles.js';
 import { urlLogo } from './parametrage.js';
+import { envoyerManuel, manuelPdf } from './manuel.js';
 import { dansEntreprise, preparerBase } from '../locataire.js';
 import { conflit, ErreurMetier, introuvable, lireJeton, oublierEntreprises, requete, signerPlateforme, texte } from '../noyau.js';
 import { codeEntrepriseLibre, seedEntreprise } from '../seed.js';
@@ -143,7 +144,9 @@ export async function creer(b, origine, adminPf) {
   // Code provisoire de l'administrateur : envoyé par e-mail et renvoyé une seule fois (à transmettre si l'e-mail échoue).
   const mail = await dansEntreprise(contexte(e), () =>
     envoyerCodeProvisoire({ email: admin.email, nom: admin.nom, code: admin.code, motif: 'creation', origine, par: `Plateforme (${adminPf?.email ?? ''})` }));
-  return { ...(await vue(e.toObject())), acces: { email: admin.email, codeProvisoire: admin.code, mail } };
+  // Manuel d'utilisation PDF (lien avec l'identifiant, premiers pas, guide illustré) envoyé à l'administrateur
+  const manuel = await envoyerManuel(e, { origine, par: `Plateforme (${adminPf?.email ?? ''})` });
+  return { ...(await vue(e.toObject())), acces: { email: admin.email, codeProvisoire: admin.code, mail, manuel } };
 }
 
 async function trouver(id) {
@@ -221,4 +224,15 @@ export async function modifierSmtp(b) {
 export async function testerSmtpPlateforme(b) {
   const ancien = (await ParametresPlateforme.findById('plateforme').select('+smtp.motDePasse').lean())?.smtp ?? {};
   return testerSmtp(normaliserSmtp({ ...b?.smtp, actif: true }, ancien), b?.a, 'Gestion des entreprises');
+}
+
+// ───────────── Manuel d'utilisation ─────────────
+
+export async function telechargerManuel(id, origine) {
+  return manuelPdf(await trouver(id), origine);
+}
+
+/** Renvoie le manuel PDF par e-mail (administrateurs de l'entreprise, ou adresses données). */
+export async function renvoyerManuel(id, b, origine, adminPf) {
+  return envoyerManuel(await trouver(id), { a: b?.a, origine, par: `Plateforme (${adminPf?.email ?? ''})` });
 }

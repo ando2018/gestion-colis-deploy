@@ -81,8 +81,12 @@ export function etiquettesColis(colis, destination, dpi, typeCode = 'QR', nomApp
   const reste = Math.max(0, colis.montant - (colis.paiement?.recu ?? 0));
   const ville = (destination?.ville ?? colis.destination).toUpperCase();
   const etiquettes = [];
+  // Place dans l'envoi (colis 1/2, 2/2…) ; pièces en plus si le colis en compte plusieurs
+  const rang = colis.rangEnvoi ?? 1;
+  const total = colis.nbEnvoi ?? 1;
   for (let i = 1; i <= colis.nbPieces; i++) {
     const code = colis.nbPieces > 1 ? `${colis.numero}-${i}/${colis.nbPieces}` : colis.numero;
+    const detail = `Colis ${rang} sur ${total}${colis.nbPieces > 1 ? ` - pièce ${i}/${colis.nbPieces}` : ''}`;
     const paiement = reste <= 0
       ? ['^FO30,965^GB420,110,4^FS', '^FO30,990^A0N,70,64^FB420,1,0,C^FDPAYÉ^FS']
       : ['^FO30,965^GB520,110,110^FS', '^FO30,977^FR^A0N,36,34^FB520,1,0,C^FDÀ PAYER À DESTINATION^FS',
@@ -91,7 +95,7 @@ export function etiquettesColis(colis, destination, dpi, typeCode = 'QR', nomApp
       ? [codeBarres(660, 200, code, colis.code)]
       : [`^FO40,650^BQN,2,9^FDQA,${champ(code)}^FS`,
         '^FO330,675^A0N,28,28^FDN° DE COLIS^FS', `^FO330,715^A0N,46,40^FD${champ(colis.numero)}^FS`,
-        `^FO330,775^A0N,32,30^FDpièce ${i} sur ${colis.nbPieces}^FS`, `^FO330,820^A0N,28,26^FDCode ${champ(colis.code ?? '')}^FS`];
+        `^FO330,775^A0N,32,30^FD${champ(detail)}^FS`, `^FO330,820^A0N,28,26^FDCode ${champ(colis.code ?? '')}^FS`];
     etiquettes.push(echelle(gras([
       '^XA', '^CI28',
       ...bandeau(nomApp, jour(colis.dateReception)),
@@ -101,7 +105,7 @@ export function etiquettesColis(colis, destination, dpi, typeCode = 'QR', nomApp
       `^FO30,150^A0N,180,150^FD${champ(colis.destination)}^FS`,
       `^FO30,340^A0N,44,40^FD${champ(coupe(ville, 18))}^FS`,
       '^FO470,118^A0N,28,28^FDCOLIS^FS',
-      `^FO470,150^A0N,120,104^FD${i}/${colis.nbPieces}^FS`,
+      `^FO470,150^A0N,120,104^FD${rang}/${total}^FS`,
       '^FO470,290^A0N,28,28^FDPOIDS^FS',
       `^FO470,330^A0N,52,48^FD${String(colis.poidsKg).replace('.', ',')} kg^FS`,
       // Destinataire (téléphone anonymisé)

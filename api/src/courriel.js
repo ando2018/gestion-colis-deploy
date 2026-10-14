@@ -1,5 +1,5 @@
 // Envoi d'e-mails (SMTP paramétrable) : codes provisoires à la création d'un compte et à la réinitialisation.
-// Serveur SMTP de l'entreprise (Administration → Paramètres) s'il est activé, sinon celui de la plateforme.
+// Serveur SMTP commun de la plateforme (/plateforme → E-mails), pour toutes les entreprises.
 import nodemailer from 'nodemailer';
 import { Message, Parametres, ParametresPlateforme } from './modeles.js';
 import { entrepriseCourante } from './locataire.js';
@@ -48,12 +48,8 @@ const transport = (s) => nodemailer.createTransport({
   socketTimeout: 15000,
 });
 
-/** Réglages SMTP à utiliser : ceux de l'entreprise courante s'ils sont activés, sinon ceux de la plateforme. */
+/** Réglages SMTP à utiliser : toujours le serveur commun de la plateforme (/plateforme → E-mails). */
 async function smtpEffectif() {
-  if (entrepriseCourante()) {
-    const p = await Parametres.findById('general').select('+smtp.motDePasse').lean();
-    if (p?.smtp?.actif && p.smtp.hote) return p.smtp;
-  }
   const pf = await ParametresPlateforme.findById('plateforme').select('+smtp.motDePasse').lean();
   return pf?.smtp?.actif && pf.smtp.hote ? pf.smtp : null;
 }
@@ -62,7 +58,7 @@ async function smtpEffectif() {
  * Envoie un message ; ne lève jamais : renvoie { envoye, a, erreur }.
  * journal : { motif, par, destinataireNom } → copie exacte gardée dans les messages de l'entreprise courante.
  */
-export async function envoyer({ a, sujet, texte: corps, html }, smtp = null, journal = null) {
+export async function envoyer({ a, sujet, texte: corps, html, pieces = [] }, smtp = null, journal = null) {
   let s = null;
   let r;
   try {
@@ -71,7 +67,7 @@ export async function envoyer({ a, sujet, texte: corps, html }, smtp = null, jou
     else {
       await transport(s).sendMail({
         from: s.expediteurNom ? { name: s.expediteurNom, address: s.expediteur } : s.expediteur,
-        to: a, subject: sujet, text: corps, html,
+        to: a, subject: sujet, text: corps, html, attachments: pieces,
       });
       r = { envoye: true, a };
     }
@@ -83,6 +79,7 @@ export async function envoyer({ a, sujet, texte: corps, html }, smtp = null, jou
       const m = await Message.create({
         a, sujet, texte: corps, html, motif: journal.motif, envoye: r.envoye, erreur: r.erreur ?? '',
         par: journal.par ?? '', destinataireNom: journal.destinataireNom ?? '', serveur: s ? `${s.hote}:${s.port}` : '',
+        piecesJointes: pieces.map((p) => p.filename),
       });
       r.messageId = m._id;
     } catch { /* la copie ne doit jamais empêcher l'envoi */ }
@@ -91,6 +88,10 @@ export async function envoyer({ a, sujet, texte: corps, html }, smtp = null, jou
 }
 
 const echapper = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/** Début des liens envoyés (e-mails, manuel) : adresse publique réglée, sinon l'adresse vue par la requête. */
+export const baseLiens = (p, origine) =>
+  (p?.urlPublique && !/localhost/.test(p.urlPublique) ? p.urlPublique : origine || p?.urlPublique || '').replace(/\/+$/, '');
 
 /**
  * Message du code provisoire, au nom de l'application de l'entreprise (Administration → Paramètres).
@@ -149,7 +150,7 @@ export async function envoyerCodeProvisoire({ email, nom, code, motif, origine, 
   const e = entrepriseCourante();
   const p = await Parametres.findById('general').lean();
   const application = p?.nomApplication || 'Gestion colis';
-  const base = (p?.urlPublique && !/localhost/.test(p.urlPublique) ? p.urlPublique : origine || p?.urlPublique || '').replace(/\/+$/, '');
+  const base = baseLiens(p, origine);
   const msg = messageCodeProvisoire({
     nom, email, code, motif, application, entreprise: e?.nom, codeEntreprise: e?.code ?? '', lien: `${base}/connexion/${e?.code ?? ''}`,
   });

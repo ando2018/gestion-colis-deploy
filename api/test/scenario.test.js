@@ -816,57 +816,38 @@ function fauxSmtp() {
   return { serveur, recus };
 }
 
-test('e-mails : code provisoire envoyé à la création et à la réinitialisation (SMTP paramétrable)', async () => {
+test('e-mails : code provisoire envoyé à la création et à la réinitialisation (SMTP de la plateforme)', async () => {
   const smtp = fauxSmtp();
   const port = smtp.serveur.address().port;
   const admin = await connexion('admin@colis.local');
-  const reglages = { actif: true, hote: '127.0.0.1', port, securite: 'AUCUNE', expediteur: 'noreply@colis.local', expediteurNom: 'Colis' };
-  // Sans SMTP configuré : le compte est créé, l'écran signale l'e-mail non envoyé
+  const pf = (await (await fetch(`${base}/api/plateforme/connexion`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'plateforme@colis.local', motDePasse: 'Colis2026!' }),
+  })).json()).jeton;
+  // Sans SMTP de plateforme : le compte est créé, l'écran signale l'e-mail non envoyé
   const sans = ok(await appel(admin, 'POST', '/api/utilisateurs', { email: 'sans@colis.local', nom: 'Sans Mail', role: 'CARISTE', depots: ['PAR'] }, null), 201);
   assert.equal(sans.mail.envoye, false);
   assert.match(sans.mail.erreur, /non configuré/);
+  // L'entreprise ne règle plus de SMTP ni ne consulte de messages (tout passe par la plateforme)
+  assert.equal((await appel(admin, 'PUT', '/api/parametres/smtp', { actif: true }, null)).status, 404);
+  assert.equal((await appel(admin, 'GET', '/api/messages', null, null)).status, 404);
+  assert.equal(ok(await appel(admin, 'GET', '/api/parametres', null, null)).smtp, undefined);
 
-  assert.equal((await appel(admin, 'PUT', '/api/parametres/smtp', { ...reglages, expediteur: 'pas-une-adresse' }, null)).status, 400);
-  ok(await appel(admin, 'PUT', '/api/parametres/smtp', { ...reglages, utilisateur: '', motDePasse: 'secret' }, null));
-  const p = ok(await appel(admin, 'GET', '/api/parametres', null, null));
-  assert.equal(p.smtp.motDePasse, undefined, 'mot de passe SMTP jamais renvoyé');
-  assert.equal(p.smtp.motDePasseEnregistre, true);
+  ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: true, hote: '127.0.0.1', port, securite: 'AUCUNE', expediteur: 'noreply@colis.local', expediteurNom: 'Colis' }, null));
   ok(await appel(admin, 'PUT', '/api/parametres', { nomApplication: 'TransAfrik Cargo' }, null));
-
-  const test = ok(await appel(admin, 'POST', '/api/parametres/smtp/test', { smtp: reglages, a: 'moi@colis.local' }, null));
-  assert.equal(test.envoye, true);
   const u = ok(await appel(admin, 'POST', '/api/utilisateurs', { email: 'mail@colis.local', nom: 'Fatou Sow', role: 'RECEPTION', depots: ['PAR'] }, null), 201);
   assert.equal(u.mail.envoye, true);
   const r = ok(await appel(admin, 'POST', `/api/utilisateurs/${u._id}/reinitialiser-code`, {}, null));
-  assert.equal(r.mail.envoye, true);
+  assert.equal(r.mail.envoye, true, 'réinitialisation du code : e-mail par le SMTP de la plateforme');
   await new Promise((ok) => setTimeout(ok, 100));
-  assert.equal(smtp.recus.length, 3);
-  const [, creation, reinit] = smtp.recus.map((m) => m.replace(/=\r?\n/g, ''));
+  assert.equal(smtp.recus.length, 2);
+  const [creation, reinit] = smtp.recus.map((m) => m.replace(/=\r?\n/g, ''));
   assert.match(creation, /To: mail@colis\.local/);
-  assert.match(creation, /Subject: .*TransAfrik Cargo|Subject: =\?UTF-8/);
   assert.ok(creation.includes(u.codeProvisoire), 'code provisoire dans le message');
   assert.ok(creation.includes('DEM-000-000-001'), 'identifiant entreprise');
   assert.ok(creation.includes('/connexion/DEM-000-000-001'), 'lien direct');
   assert.ok(reinit.includes(r.codeProvisoire));
-  // Copie exacte de chaque e-mail (Administration → Messages), échecs compris
-  const liste = ok(await appel(admin, 'GET', '/api/messages', null, null));
-  assert.ok(liste.total >= 4);
-  const [mReinit, mCreation] = liste.messages;
-  assert.equal(mReinit.motif, 'reinitialisation');
-  assert.equal(mReinit.html, undefined, 'liste sans le HTML');
-  assert.equal(mCreation.motif, 'creation');
-  assert.equal(mCreation.a, 'mail@colis.local');
-  assert.equal(mCreation.par, 'Administrateur');
-  assert.ok(mCreation.texte.includes(u.codeProvisoire));
-  const complet = ok(await appel(admin, 'GET', `/api/messages/${mCreation._id}`, null, null));
-  assert.ok(complet.html.includes(u.codeProvisoire));
-  const echec = ok(await appel(admin, 'GET', '/api/messages?statut=echec', null, null));
-  assert.ok(echec.messages.some((x) => x.a === 'sans@colis.local' && /non configuré/.test(x.erreur)));
-  assert.equal(ok(await appel(admin, 'GET', '/api/messages?q=fatou', null, null)).total, 2);
-  const agentMsg = await connexion('reception@colis.local');
-  assert.equal((await appel(agentMsg, 'GET', '/api/messages', null, null)).status, 403);
   ok(await appel(admin, 'PUT', '/api/parametres', { nomApplication: 'Gestion colis' }, null));
-  ok(await appel(admin, 'PUT', '/api/parametres/smtp', { actif: false }, null));
+  ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: false }, null));
   smtp.serveur.close();
 });
 
@@ -945,4 +926,88 @@ test('contact : message d’un établissement vers la plateforme, notification p
   assert.equal(ok(await appel(pf, 'GET', '/api/plateforme/contact?nonLus=1', null, null)).messages.length, 0);
   ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: false }, null));
   smtp.serveur.close();
+});
+
+test('manuel d’utilisation : PDF illustré, envoyé à la création et renvoyable', async () => {
+  const smtp = fauxSmtp();
+  const pf = (await (await fetch(`${base}/api/plateforme/connexion`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'plateforme@colis.local', motDePasse: 'Colis2026!' }),
+  })).json()).jeton;
+  ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: true, hote: '127.0.0.1', port: smtp.serveur.address().port, securite: 'AUCUNE', expediteur: 'plateforme@colis.local' }, null));
+  const e = ok(await appel(pf, 'POST', '/api/plateforme/entreprises', { nom: 'Manuel Express', admin: { email: 'chef@manuel.local', nom: 'Chef' } }, null), 201);
+  assert.equal(e.acces.mail.envoye, true, 'code provisoire');
+  assert.equal(e.acces.manuel.envoye, true, 'manuel envoyé à la création');
+  await new Promise((ok) => setTimeout(ok, 150));
+  const mail = smtp.recus.at(-1);
+  assert.match(mail, /To: chef@manuel\.local/);
+  assert.match(mail, /Content-Type: application\/pdf/);
+  assert.ok(mail.includes(`manuel-${e.code}.pdf`), 'pièce jointe nommée');
+  // Téléchargement : un vrai PDF, avec les captures (volumineux)
+  const r = await fetch(`${base}/api/plateforme/entreprises/${e.id}/manuel`, { headers: { authorization: `Bearer ${pf}` } });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'application/pdf');
+  const pdf = Buffer.from(await r.arrayBuffer());
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(pdf.length > 500000, `PDF illustré (${pdf.length} octets)`);
+  // Renvoi à une autre adresse ; refus d'un jeton d'entreprise
+  const renvoi = ok(await appel(pf, 'POST', `/api/plateforme/entreprises/${e.id}/manuel`, { a: 'autre@manuel.local' }, null));
+  assert.equal(renvoi.envoye, true);
+  assert.equal(renvoi.a, 'autre@manuel.local');
+  const admin = await connexion('admin@colis.local');
+  assert.equal((await appel(admin, 'POST', `/api/plateforme/entreprises/${e.id}/manuel`, {}, null)).status, 401);
+  ok(await appel(pf, 'PUT', `/api/plateforme/entreprises/${e.id}`, { actif: false }, null));
+  ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: false }, null));
+  smtp.serveur.close();
+});
+
+test('envoi de plusieurs colis : « Colis 1 », « Colis 2 » par défaut, colis 1/2 et 2/2 sur les étiquettes', async () => {
+  const agent = await connexion('reception@colis.local');
+  const e = ok(await appel(agent, 'POST', '/api/envois', {
+    destination: 'ABJ', expediteur: { nom: 'DIALLO Awa', tel: '0601020304' }, destinataire: { nom: 'KOUASSI Jean', tel: '+225 07 00 00 00' },
+    colis: [{ poidsKg: 4 }, { poidsKg: 6, description: 'Télévision' }], paiement: { mode: 'ESPECES' },
+  }), 201);
+  const [c1, c2] = e.colis;
+  assert.deepEqual([c1.description, c2.description], ['Colis 1', 'Télévision'], 'sans description : « Colis N »');
+  assert.deepEqual([c1.rangEnvoi, c1.nbEnvoi, c2.rangEnvoi, c2.nbEnvoi], [1, 2, 2, 2], 'colis 1/2 et 2/2');
+  const zpl1 = (await appel(agent, 'GET', `/api/print/colis/${c1.numero}`)).corps;
+  const zpl2 = (await appel(agent, 'GET', `/api/print/colis/${c2.numero}`)).corps;
+  assert.ok(zpl1.includes('^FD1/2^FS') && zpl1.includes('Colis 1 sur 2'), 'étiquette du colis 1 : 1/2');
+  assert.ok(zpl2.includes('^FD2/2^FS') && zpl2.includes('Colis 2 sur 2'), 'étiquette du colis 2 : 2/2');
+  assert.equal(ok(await appel(agent, 'GET', `/api/colis/${c2.numero}`)).rangEnvoi, 2, 'suivi : rang fourni');
+});
+
+test('export détaillé des colis : CSV, Excel et PDF avec palette, conteneur, prix et dates', async () => {
+  const [admin, agent, quai] = await Promise.all(['admin@colis.local', 'reception@colis.local', 'quai@colis.local'].map((e) => connexion(e)));
+  const e = ok(await appel(agent, 'POST', '/api/envois', {
+    destination: 'DKR', expediteur: { nom: 'EXPORT Awa', tel: '0601' }, destinataire: { nom: 'DIOP Khady; fils', tel: '+221 77' },
+    colis: [{ poidsKg: 4.5 }, { poidsKg: 6 }], paiement: { mode: 'ESPECES' },
+  }), 201);
+  const pal = ok(await appel(quai, 'POST', '/api/palettes', { destination: 'DKR' }), 201);
+  ok(await appel(quai, 'POST', `/api/palettes/${pal.numero}/colis`, { numero: e.colis[0].numero }));
+  const aujourdhui = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const q = `du=${aujourdhui}&au=${aujourdhui}&destination=DKR`;
+  const ap = ok(await appel(admin, 'GET', `/api/export/colis/apercu?${q}`, null, null));
+  assert.ok(ap.colis >= 2 && ap.poids >= 10.5 && ap.palettes >= 1);
+  assert.equal(ap.lignes.length, ap.colis, 'aperçu : la liste des colis exportés');
+  assert.ok(ap.lignes.some((x) => x.palette === pal.numero && x.montant === undefined));
+  assert.equal((await appel(agent, 'GET', `/api/export/colis/apercu?${q}`)).status, 403, 'réservé à l’admin');
+  const telecharger = (format) => fetch(`${base}/api/export/colis?${q}&format=${format}`, { headers: { authorization: `Bearer ${admin}` } });
+  // CSV : séparateur « ; », BOM, guillemets échappés, palette du colis
+  const rc = await telecharger('csv');
+  assert.match(rc.headers.get('content-disposition'), /export-colis-.*\.csv/);
+  const octets = Buffer.from(await rc.arrayBuffer());
+  assert.deepEqual([...octets.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'BOM UTF-8 (accents dans Excel)');
+  const texteCsv = octets.toString('utf8');
+  assert.ok(texteCsv.includes('N° colis;Code-barres;Envoi'), 'entête');
+  assert.ok(texteCsv.includes('"DIOP Khady; fils"'), 'champ avec « ; » entre guillemets');
+  assert.ok(texteCsv.includes(pal.numero) && texteCsv.includes('4,5'), 'palette et poids à la française');
+  assert.ok(!/Montant|Payé \(|Reste/.test(texteCsv.split('\r\n')[0]), 'aucune colonne de chiffre d’affaires');
+  assert.equal(ap.montant, undefined, 'aperçu sans montant');
+  // Excel : un vrai classeur (zip) ; PDF : un vrai PDF
+  const rx = await telecharger('xlsx');
+  const xls = Buffer.from(await rx.arrayBuffer());
+  assert.equal(xls.subarray(0, 2).toString(), 'PK');
+  const rp = await telecharger('pdf');
+  assert.equal(Buffer.from(await rp.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+  assert.equal((await appel(admin, 'GET', `/api/export/colis?${q}&format=doc`, null, null)).status, 400);
 });
