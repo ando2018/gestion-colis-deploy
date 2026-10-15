@@ -127,6 +127,7 @@ export const Formulaire = modeleEntreprise('Formulaire', new Schema({
   description: { type: String, default: '' },
   statut: { type: String, enum: Object.values(FORMULAIRE), default: FORMULAIRE.EN_ATTENTE },
   creePar: String,
+  offres: { type: Boolean, default: false }, // le client accepte de recevoir des offres
   envoi: { type: String, default: null },
   traitePar: String,
   traiteLe: Date,
@@ -159,7 +160,7 @@ export const Colis = modeleEntreprise('Colis', new Schema({
   nbEnvoi: { type: Number, default: 1 },
   depot: { type: String, required: true },
   destination: { type: String, required: true },
-  expediteur: { ...Personne, pieceIdentite: { type: String, default: '' } },
+  expediteur: { ...Personne, pieceIdentite: { type: String, default: '' }, email: { type: String, default: '' } },
   destinataire: { ...Personne, adresse: { type: String, default: '' } },
   description: { type: String, default: '' },
   nbPieces: { type: Number, default: 1, min: 1 },
@@ -170,6 +171,10 @@ export const Colis = modeleEntreprise('Colis', new Schema({
   montantCalcule: { type: Number, required: true },
   montant: { type: Number, required: true },
   motifMontant: { type: String, default: '' },
+  /** Code promo de l'envoi : pourcentage appliqué au montant calculé (options comprises) et remise obtenue. */
+  codePromo: { type: String, default: '' },
+  pourcentageRemise: { type: Number, default: 0 },
+  remise: { type: Number, default: 0 },
   paiement: {
     mode: String,
     statut: { type: String, enum: Object.values(PAIEMENT) },
@@ -231,13 +236,45 @@ export const Message = modeleEntreprise('Message', new Schema({
   sujet: { type: String, default: '' },
   texte: { type: String, default: '' },
   html: { type: String, default: '' },
-  motif: { type: String, enum: ['creation', 'reinitialisation', 'test', 'manuel'], required: true },
+  motif: { type: String, enum: ['creation', 'reinitialisation', 'test', 'manuel', 'offre'], required: true },
   piecesJointes: { type: [String], default: [] },
   envoye: { type: Boolean, default: false },
   erreur: { type: String, default: '' },
   par: { type: String, default: '' }, // qui a déclenché l'envoi (admin de l'entreprise ou plateforme)
   serveur: { type: String, default: '' }, // SMTP utilisé (hôte:port)
 }, { versionKey: false }).index({ date: -1 }).index({ a: 1, date: -1 }), 'messages');
+
+/** Clients qui acceptent de recevoir des offres (case cochée à la réception ou au formulaire client). */
+export const Client = modeleEntreprise('Client', new Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  nom: { type: String, default: '' },
+  tel: { type: String, default: '' },
+  depot: { type: String, default: '' },
+  source: { type: String, enum: ['reception', 'formulaire'], default: 'reception' },
+  consentementOffres: { type: Boolean, default: true },
+  consentementLe: { type: Date, default: Date.now },
+  desinscritLe: { type: Date, default: null },
+}, opts).index({ consentementOffres: 1 }), 'clients');
+
+/** Code promo : pourcentage de réduction sur le prochain envoi, période de validité, utilisations limitées ou non. */
+export const CodePromo = modeleEntreprise('CodePromo', new Schema({
+  code: { type: String, required: true, unique: true, uppercase: true, trim: true },
+  description: { type: String, default: '' },
+  pourcentage: { type: Number, required: true, min: 0.01, max: 100 },
+  debut: { type: Date, required: true },
+  fin: { type: Date, required: true },
+  utilisationsMax: { type: Number, default: 0, min: 0 }, // 0 : illimité
+  nbUtilisations: { type: Number, default: 0 },
+  actif: { type: Boolean, default: true },
+  creePar: { type: String, default: '' },
+}, opts), 'codesPromo');
+
+/** Offre envoyée aux clients abonnés (liste de diffusion). */
+export const Campagne = modeleEntreprise('Campagne', new Schema({
+  date: { type: Date, default: Date.now },
+  sujet: String, message: String, codePromo: { type: String, default: '' }, pourcentage: { type: Number, default: 0 },
+  nbDestinataires: Number, nbEnvoyes: Number, nbEchecs: Number, par: String,
+}, { versionKey: false }).index({ date: -1 }), 'campagnes');
 
 /** Historique en écriture seule : jamais modifié ni supprimé. */
 export const Evenement = modeleEntreprise('Evenement', new Schema({

@@ -2,6 +2,7 @@ import { Colis, COLIS, Destination, Evenement, MODE_A_DESTINATION, ModePaiement,
 import {
   codeCourt, codeScanne, jjmmaa, conflit, evtColis, filtreDepot, introuvable, journaliser, pad, prochain, r2, requete, texte, transaction,
 } from '../noyau.js';
+import * as offres from './offres.js';
 import * as formulaires from './formulaires.js';
 import { retirerDePalette } from './palettes.js';
 
@@ -72,6 +73,8 @@ export async function receptionnerEnvoi(req, b) {
   if (lignes.length > 50) throw requete('50 colis maximum par envoi');
   const options = (b.options ?? []).filter((o) => texte(o.libelle)).map((o) => ({ libelle: texte(o.libelle), montant: r2(o.montant) }));
   const motifMontant = texte(b.motifMontant);
+  // Code promo : réduction en pourcentage sur le montant calculé de chaque colis (options comprises)
+  const promo = texte(b.codePromo) ? await offres.verifierCode(b.codePromo) : null;
 
   const colisPrepares = lignes.map((l, i) => {
     const poidsKg = r2(l.poidsKg);
@@ -79,9 +82,11 @@ export async function receptionnerEnvoi(req, b) {
     // Les options de l'envoi (emballage, assurance…) sont portées par le premier colis.
     const opts = i === 0 ? options : [];
     const montantCalcule = r2(poidsKg * destination.tarifKg + opts.reduce((s, o) => s + o.montant, 0));
-    const montant = l.montant == null || l.montant === '' ? montantCalcule : r2(l.montant);
-    if (montant !== montantCalcule && !motifMontant) {
-      throw requete(`Colis ${i + 1} : montant modifié (${montantCalcule} → ${montant}), motif obligatoire`, 'MOTIF_REQUIS');
+    const remise = promo ? r2(montantCalcule * promo.pourcentage / 100) : 0;
+    const montantRemise = r2(montantCalcule - remise);
+    const montant = l.montant == null || l.montant === '' ? montantRemise : r2(l.montant);
+    if (montant !== montantRemise && !motifMontant) {
+      throw requete(`Colis ${i + 1} : montant modifié (${montantRemise} → ${montant}), motif obligatoire`, 'MOTIF_REQUIS');
     }
     return {
       // Sans description saisie : « Colis 1 », « Colis 2 »… (seul le poids est à remplir)
@@ -93,7 +98,10 @@ export async function receptionnerEnvoi(req, b) {
       options: opts,
       montantCalcule,
       montant,
-      motifMontant: montant !== montantCalcule ? motifMontant : '',
+      motifMontant: montant !== montantRemise ? motifMontant : '',
+      codePromo: promo?.code ?? '',
+      pourcentageRemise: promo?.pourcentage ?? 0,
+      remise,
     };
   });
 
@@ -105,6 +113,11 @@ export async function receptionnerEnvoi(req, b) {
   const file = paiements.lignes.map((l) => ({ ...l }));
 
   return transaction(async (session) => {
+    if (promo) await offres.utiliserCode(promo.code, session);
+    // Le client accepte de recevoir des offres : son contact rejoint la base clients
+    if (b.offres?.accepte) {
+      await offres.enregistrerConsentement({ nom: b.expediteur.nom, tel: b.expediteur.tel, email: b.expediteur.email ?? b.offres.email, depot: depot.code, source: 'reception', session });
+    }
     const jour = jjmmaa();
     let envoi = null;
     const crees = [];
@@ -133,7 +146,7 @@ export async function receptionnerEnvoi(req, b) {
         nbEnvoi: colisPrepares.length,
         depot: depot.code,
         destination: destination.code,
-        expediteur: { nom: texte(b.expediteur.nom), tel: texte(b.expediteur.tel), pieceIdentite: texte(b.expediteur.pieceIdentite) },
+        expediteur: { nom: texte(b.expediteur.nom), tel: texte(b.expediteur.tel), pieceIdentite: texte(b.expediteur.pieceIdentite), email: texte(b.expediteur.email ?? b.offres?.email).toLowerCase() },
         destinataire: { nom: texte(b.destinataire.nom), tel: texte(b.destinataire.tel), adresse: texte(b.destinataire.adresse) },
         paiement: {
           mode: modeDe(versements, modeEnvoi),
@@ -144,7 +157,7 @@ export async function receptionnerEnvoi(req, b) {
         },
       }], { session });
 
-      const details = { envoi, rang: `${crees.length + 1}/${colisPrepares.length}` };
+      const details = { envoi, rang: `${crees.length + 1}/${colisPrepares.length}`, ...(c.codePromo ? { codePromo: c.codePromo, remise: c.remise } : {}), ...(c.options.length ? { options: c.options } : {}) };
       await journaliser(req, session, 'RECEPTION', evtColis(colis, { apres: { statut: COLIS.RECU, destination: destination.code, poidsKg: c.poidsKg, montant: c.montant }, details }));
       if (c.montant !== c.montantCalcule) {
         await journaliser(req, session, 'MODIFICATION_MONTANT', evtColis(colis, { avant: c.montantCalcule, apres: c.montant, motif: motifMontant }));
@@ -302,6 +315,6 @@ export async function clientParTelephone(tel) {
   const c = await Colis.findOne({ $or: [{ 'expediteur.tel': t }, { 'destinataire.tel': t }] }).sort({ dateReception: -1 }).lean();
   if (!c) return null;
   return c.expediteur.tel === t
-    ? { nom: c.expediteur.nom, tel: c.expediteur.tel, pieceIdentite: c.expediteur.pieceIdentite }
+    ? { nom: c.expediteur.nom, tel: c.expediteur.tel, pieceIdentite: c.expediteur.pieceIdentite, email: c.expediteur.email ?? '' }
     : { nom: c.destinataire.nom, tel: c.destinataire.tel, adresse: c.destinataire.adresse };
 }

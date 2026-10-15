@@ -989,7 +989,9 @@ test('export détaillé des colis : CSV, Excel et PDF avec palette, conteneur, p
   const ap = ok(await appel(admin, 'GET', `/api/export/colis/apercu?${q}`, null, null));
   assert.ok(ap.colis >= 2 && ap.poids >= 10.5 && ap.palettes >= 1);
   assert.equal(ap.lignes.length, ap.colis, 'aperçu : la liste des colis exportés');
-  assert.ok(ap.lignes.some((x) => x.palette === pal.numero && x.montant === undefined));
+  assert.ok(ap.lignes.some((x) => x.palette === pal.numero), 'palette du colis');
+  assert.ok(ap.lignes.every((x) => typeof x.montant === 'number' && typeof x.montantPaye === 'number' && Array.isArray(x.optionsDetail)), 'aperçu : montant, payé et options');
+  assert.ok(ap.paye > 0 && ap.montant >= ap.paye, 'aperçu : totaux montant et payé');
   assert.equal((await appel(agent, 'GET', `/api/export/colis/apercu?${q}`)).status, 403, 'réservé à l’admin');
   const telecharger = (format) => fetch(`${base}/api/export/colis?${q}&format=${format}`, { headers: { authorization: `Bearer ${admin}` } });
   // CSV : séparateur « ; », BOM, guillemets échappés, palette du colis
@@ -1001,8 +1003,7 @@ test('export détaillé des colis : CSV, Excel et PDF avec palette, conteneur, p
   assert.ok(texteCsv.includes('N° colis;Code-barres;Envoi'), 'entête');
   assert.ok(texteCsv.includes('"DIOP Khady; fils"'), 'champ avec « ; » entre guillemets');
   assert.ok(texteCsv.includes(pal.numero) && texteCsv.includes('4,5'), 'palette et poids à la française');
-  assert.ok(!/Montant|Payé \(|Reste/.test(texteCsv.split('\r\n')[0]), 'aucune colonne de chiffre d’affaires');
-  assert.equal(ap.montant, undefined, 'aperçu sans montant');
+  assert.ok(texteCsv.split('\r\n')[0].includes('Options;Prix calculé (€);Offre (code promo);Réduction (%);Réduction (€);Montant (€);Payé (€);Reste (€)'), 'colonnes de prix, offre et options');
   // Excel : un vrai classeur (zip) ; PDF : un vrai PDF
   const rx = await telecharger('xlsx');
   const xls = Buffer.from(await rx.arrayBuffer());
@@ -1010,4 +1011,68 @@ test('export détaillé des colis : CSV, Excel et PDF avec palette, conteneur, p
   const rp = await telecharger('pdf');
   assert.equal(Buffer.from(await rp.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
   assert.equal((await appel(admin, 'GET', `/api/export/colis?${q}&format=doc`, null, null)).status, 400);
+});
+
+test('offres : consentement, base clients, codes promo (validité, utilisations), envoi d’une offre et désinscription', async () => {
+  const smtp = fauxSmtp();
+  const pf = (await (await fetch(`${base}/api/plateforme/connexion`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'plateforme@colis.local', motDePasse: 'Colis2026!' }),
+  })).json()).jeton;
+  ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: true, hote: '127.0.0.1', port: smtp.serveur.address().port, securite: 'AUCUNE', expediteur: 'offres@colis.local' }, null));
+  const [admin, agent] = await Promise.all(['admin@colis.local', 'reception@colis.local'].map((e) => connexion(e)));
+  const demain = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+  // Codes promo : création, refus d'un code invalide, vérification au comptoir
+  const promo = ok(await appel(admin, 'POST', '/api/codes-promo', { code: 'bienvenue10', pourcentage: 10, fin: demain, utilisationsMax: 1 }, null), 201);
+  assert.equal(promo.code, 'BIENVENUE10');
+  assert.equal(promo.etat, 'valide');
+  assert.equal((await appel(admin, 'POST', '/api/codes-promo', { code: 'X', pourcentage: 10, fin: demain }, null)).status, 400);
+  assert.equal((await appel(admin, 'POST', '/api/codes-promo', { pourcentage: 150, fin: demain }, null)).status, 400);
+  assert.equal(ok(await appel(agent, 'GET', '/api/codes-promo/verifier?code=bienvenue10')).pourcentage, 10);
+  assert.equal((await appel(agent, 'GET', '/api/codes-promo/verifier?code=FAUX')).corps.code, 'PROMO_INVALIDE');
+
+  // Réception avec le code et le consentement : remise de 10 % sur chaque colis, contact enregistré
+  const e = ok(await appel(agent, 'POST', '/api/envois', {
+    destination: 'ABJ', expediteur: { nom: 'OFFRE Awa', tel: '0699', email: 'awa@exemple.fr' }, destinataire: { nom: 'KOUASSI Jean', tel: '07' },
+    colis: [{ poidsKg: 10 }, { poidsKg: 5 }], options: [{ libelle: 'Emballage', montant: 4 }], codePromo: 'BIENVENUE10', offres: { accepte: true },
+    paiement: { mode: 'ESPECES' },
+  }), 201);
+  const [c1, c2] = e.colis;
+  assert.equal(c1.montantCalcule, 40, '10 kg × 3,6 + emballage 4');
+  assert.equal(c1.remise, 4);
+  assert.equal(c1.montant, 36);
+  assert.equal(c2.montant, 16.2, '5 kg × 3,6 − 10 %');
+  assert.equal(c1.codePromo, 'BIENVENUE10');
+  // Code limité à 1 utilisation : refusé ensuite
+  const refus = await appel(agent, 'POST', '/api/envois', { destination: 'ABJ', expediteur: { nom: 'B', tel: '06' }, destinataire: { nom: 'C', tel: '07' }, colis: [{ poidsKg: 2 }], codePromo: 'BIENVENUE10', paiement: { mode: 'ESPECES' } });
+  assert.equal(refus.corps.code, 'PROMO_INVALIDE');
+  assert.equal(ok(await appel(admin, 'GET', '/api/codes-promo', null, null)).find((x) => x.code === 'BIENVENUE10').etat, 'epuise');
+
+  // Base clients : abonné enregistré ; formulaire client sans e-mail valide refusé
+  const base1 = ok(await appel(admin, 'GET', '/api/clients-offres?offres=1', null, null));
+  const awa = base1.clients.find((x) => x.email === 'awa@exemple.fr');
+  assert.ok(awa && awa.consentementOffres && awa.source === 'reception');
+  const client = await connexion('client@colis.local');
+  assert.equal((await appel(client, 'POST', '/api/formulaires', { expediteur: { nom: 'D', tel: '06' }, destinataire: { nom: 'E', tel: '07' }, offres: { accepte: true } })).status, 400);
+  ok(await appel(client, 'POST', '/api/formulaires', { expediteur: { nom: 'Borne Bintou', tel: '0612', email: 'bintou@exemple.fr' }, destinataire: { nom: 'E', tel: '07' }, offres: { accepte: true } }), 201);
+  assert.ok(ok(await appel(admin, 'GET', '/api/clients-offres?offres=1', null, null)).clients.some((x) => x.email === 'bintou@exemple.fr' && x.source === 'formulaire'));
+
+  // Envoi d'une offre avec un code promo
+  const p2 = ok(await appel(admin, 'POST', '/api/codes-promo', { pourcentage: 15, fin: demain }, null), 201);
+  assert.match(p2.code, /^PROMO-[A-Z0-9]{4}$/);
+  smtp.recus.length = 0;
+  const camp = ok(await appel(admin, 'POST', '/api/campagnes', { sujet: 'Offre de rentrée', message: 'Profitez de 15 % sur votre prochain envoi.', codePromo: p2.code }, null));
+  assert.ok(camp.envoyes >= 2);
+  await new Promise((ok) => setTimeout(ok, 150));
+  const mail = smtp.recus.find((m) => m.includes('awa@exemple.fr')).replace(/=\r?\n/g, '');
+  assert.ok(mail.includes(p2.code) && mail.includes('/desinscription/'), 'code promo et lien de désinscription');
+  // Désinscription par le lien
+  const lien = mail.match(/https?:\/\/[^\s"<>]*\/desinscription\/[^\s"<>]+/)[0].replace(/^https?:\/\/[^/]+/, '');
+  const d = await fetch(base + lien);
+  assert.equal(d.status, 200);
+  assert.equal(ok(await appel(admin, 'GET', '/api/clients-offres', null, null)).clients.find((x) => x.email === 'awa@exemple.fr').consentementOffres, false);
+  assert.equal((await fetch(base + lien.slice(0, -3) + 'xyz')).status, 404, 'lien falsifié refusé');
+  assert.equal((await appel(agent, 'GET', '/api/clients-offres', null)).status, 403);
+  ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: false }, null));
+  smtp.serveur.close();
 });

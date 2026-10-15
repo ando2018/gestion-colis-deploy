@@ -1,0 +1,59 @@
+1
+00:00:00,600 --> 00:00:12,790
+Gestion colis : du dépôt jusqu'à la destination, chaque colis est suivi, scan après scan. Découvrons ensemble le parcours d'un colis, de sa réception jusqu'au départ du conteneur.
+
+2
+00:00:14,290 --> 00:00:27,080
+Chaque agent se connecte avec l'identifiant de son entreprise, son e-mail et un code à quatre chiffres. Il ne voit que les écrans utiles à son rôle : réception, cariste, chef de quai ou administrateur.
+
+3
+00:00:28,580 --> 00:00:48,960
+À la réception, l'agent saisit l'expéditeur, le destinataire, la destination et le poids. Le prix est calculé automatiquement selon le tarif au kilo. On peut ajouter des options, comme un emballage renforcé, et appliquer un code promo. Si le client le souhaite, il est inscrit pour recevoir nos offres.
+
+4
+00:00:50,460 --> 00:00:59,580
+Le colis est enregistré. L'étiquette, avec son code-barres et son QR code, s'imprime aussitôt, ainsi que le reçu du client.
+
+5
+00:01:01,080 --> 00:01:11,660
+En palettisation, le cariste scanne chaque colis pour le poser sur une palette de la même destination. Le poids est contrôlé en temps réel, puis la palette est fermée.
+
+6
+00:01:13,160 --> 00:01:22,900
+Le chef de quai place ensuite les palettes fermées en zone de départ, prêtes à être chargées. Les reliquats et les colis les plus anciens sont proposés en premier.
+
+7
+00:01:24,400 --> 00:01:35,940
+Au chargement, on ouvre un conteneur pour la destination et on scanne chaque palette. Les compteurs indiquent les colis chargés, les retours au dépôt et les éventuels colis hors manifeste.
+
+8
+00:01:37,440 --> 00:01:47,090
+Une fois le chargement terminé, on le valide. L'application vérifie que tous les colis sont payés ; sinon, une dérogation motivée est demandée.
+
+9
+00:01:48,590 --> 00:01:59,270
+Le conteneur est validé. Il suffit de saisir le numéro de scellé pour le faire partir : tous ses colis passent au statut « Parti », et le manifeste est prêt à imprimer.
+
+10
+00:02:00,770 --> 00:02:12,460
+Le tableau de bord donne une vue d'ensemble en temps réel : colis reçus, palettes, zone de départ et conteneurs. Chaque colis se retrouve par un simple scan, avec son historique complet.
+
+11
+00:02:13,960 --> 00:02:24,210
+Côté campagne client, chaque client qui accepte nos offres rejoint automatiquement la base clients, avec son consentement. Il peut se désinscrire à tout moment.
+
+12
+00:02:25,710 --> 00:02:34,280
+L'administrateur crée des codes promo : un pourcentage de réduction, une période de validité et un nombre maximum d'utilisations.
+
+13
+00:02:35,780 --> 00:02:46,890
+Il envoie ensuite une offre par e-mail à tous les abonnés, ou à une sélection de clients, avec le code promo mis en avant. L'aperçu montre le message tel que le client le recevra.
+
+14
+00:02:48,390 --> 00:02:59,770
+Enfin, l'export détaillé liste tous les colis avec leur palette, leur conteneur, les options, les offres de réduction et les montants payés, en Excel, CSV ou PDF.
+
+15
+00:03:01,270 --> 00:03:08,230
+Gestion colis : de la réception au départ du conteneur, un suivi complet, et des clients fidélisés.

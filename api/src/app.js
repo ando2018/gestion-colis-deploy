@@ -12,6 +12,7 @@ import { authentifier, avecDepot, entrepriseActive, ErreurMetier, estCodeCourt, 
 import * as plateforme from './services/plateforme.js';
 import * as contact from './services/contact.js';
 import * as exporter from './services/export.js';
+import * as offres from './services/offres.js';
 import * as colis from './services/colis.js';
 import * as conteneurs from './services/conteneurs.js';
 import * as impression from './services/impression.js';
@@ -245,6 +246,16 @@ export function creerApp() {
     res.json(await impression.imprimer(req, req.params.type, req.params.numero, req.body ?? {})));
   api.get('/evenements', async (req, res) => res.json(await param.evenements(req, req.query)));
   api.get('/tableau-de-bord', async (req, res) => res.json(await param.tableauDeBord(req)));
+  // Offres : clients abonnés, codes promo, envoi d'une offre (liste de diffusion)
+  api.get('/codes-promo/verifier', exiger(RECEPTION), async (req, res) => res.json(await offres.verifierCode(req.query.code)));
+  api.get('/clients-offres', exiger(ADMIN), async (req, res) => res.json(await offres.clients(req.query)));
+  api.put('/clients-offres/:id', exiger(ADMIN), async (req, res) => res.json(await offres.modifierClient(req, req.params.id, req.body ?? {})));
+  api.delete('/clients-offres/:id', exiger(ADMIN), async (req, res) => res.json(await offres.supprimerClient(req.params.id)));
+  api.get('/codes-promo', exiger(ADMIN), async (_req, res) => res.json(await offres.codesPromo()));
+  api.post('/codes-promo', exiger(ADMIN), async (req, res) => res.status(201).json(await offres.creerCode(req, req.body ?? {})));
+  api.put('/codes-promo/:id', exiger(ADMIN), async (req, res) => res.json(await offres.modifierCode(req, req.params.id, req.body ?? {})));
+  api.get('/campagnes', exiger(ADMIN), async (_req, res) => res.json(await offres.campagnes()));
+  api.post('/campagnes', exiger(ADMIN), async (req, res) => res.json(await offres.envoyerCampagne(req, req.body ?? {}, origineRequete(req))));
   // Export détaillé des colis (avec palette et conteneur) : CSV, Excel, PDF
   api.get('/export/colis/apercu', exiger(ADMIN), async (req, res) => res.json(await exporter.apercu(req, req.query)));
   api.get('/export/colis', exiger(ADMIN), async (req, res) => {
@@ -255,6 +266,16 @@ export function creerApp() {
 
   api.use((_req, res) => res.status(404).json({ erreur: 'Route inconnue' }));
   app.use('/api', api);
+
+  // Désinscription des offres (lien en bas de chaque e-mail d'offre)
+  app.get('/desinscription/:entreprise/:id/:jeton', async (req, res) => {
+    const e = await entrepriseActive(req.params.entreprise);
+    const c = e ? await dansEntreprise(e, () => offres.desinscrire(e.code, req.params.id, req.params.jeton)) : null;
+    const corps = c ? `<h1>Désinscription confirmée</h1><p>${echapper(c.email)} ne recevra plus nos offres.</p>`
+      : '<h1>Lien invalide</h1><p>Ce lien de désinscription n\'est pas valide ou a expiré.</p>';
+    res.status(c ? 200 : 404).send(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Désinscription</title><style>body{font-family:system-ui,sans-serif;max-width:520px;margin:48px auto;padding:0 16px;color:#1d2330}</style></head><body>${corps}</body></html>`);
+  });
 
   // Page publique du QR palette : https://<domaine>/p/<entreprise>.<dépôt>/<numéro>
   // (ancienne forme /p/<dépôt>/<numéro> : entreprise par défaut, celle des données d'avant le multi-entreprise).

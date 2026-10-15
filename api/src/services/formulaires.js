@@ -1,5 +1,6 @@
 import { FORMULAIRE, Formulaire, Destination } from '../modeles.js';
 import { conflit, introuvable, pad, prochain, requete, texte } from '../noyau.js';
+import { enregistrerConsentement } from './offres.js';
 
 /**
  * Formulaires clients : le client saisit lui-même expéditeur et destinataire (borne, tablette, autre onglet),
@@ -19,10 +20,13 @@ export async function creer(req, b) {
   // Numéro court à annoncer au comptoir, remis à zéro chaque jour et par dépôt (F-001, F-002…).
   const jour = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date());
   const numero = `F-${pad(await prochain(`formulaire-${req.depot.code}-${jour}`), 3)}`;
+  const accepte = !!b.offres?.accepte && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(expediteur.email);
+  if (b.offres?.accepte && !accepte) throw requete('Pour recevoir nos offres, indiquez une adresse e-mail valide');
   const f = await Formulaire.create({
     numero, depot: req.depot.code, expediteur, destinataire, destination, description: texte(b.description).slice(0, 300),
-    creePar: req.user.nom,
+    creePar: req.user.nom, offres: accepte,
   });
+  if (accepte) await enregistrerConsentement({ nom: expediteur.nom, tel: expediteur.tel, email: expediteur.email, depot: req.depot.code, source: 'formulaire' });
   return f.toObject();
 }
 

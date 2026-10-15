@@ -1,5 +1,5 @@
 // Export détaillé (Administration → Export) : chaque colis avec sa palette et son conteneur, poids, personnes, dates…
-// Sans chiffre d'affaires : aucun montant (prix, payé, reste) n'est exporté, seulement le statut de paiement.
+// Prix de chaque colis : montant calculé, options (avec leur prix), offre de réduction (code promo), montant à payer, payé et reste.
 // Formats : CSV (Excel français : « ; », virgule décimale), Excel (.xlsx : colis, palettes, conteneurs), PDF (paysage).
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
@@ -13,6 +13,7 @@ const LIBELLES_STATUT = {
 };
 const LIBELLES_PAIEMENT = { PAYE: 'Payé', PARTIEL: 'Partiel', A_DESTINATION: 'À destination' };
 const statut = (s) => LIBELLES_STATUT[s] ?? s ?? '';
+const euros = (n) => `${(Number(n) || 0).toFixed(2).replace('.', ',')} €`;
 const jour = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? '')) ? new Date(`${v}T00:00:00`) : null);
 
 /** Colonnes de l'export : clé, titre, largeur Excel, type (texte, nombre, montant, date). */
@@ -20,7 +21,10 @@ export const COLONNES = [
   ['numero', 'N° colis', 22], ['code', 'Code-barres', 11], ['envoi', 'Envoi', 22], ['rang', 'Colis (rang)', 9],
   ['depot', 'Dépôt', 8], ['destination', 'Destination', 9], ['ville', 'Ville', 14], ['statut', 'Statut', 13],
   ['description', 'Description', 22], ['poidsKg', 'Poids (kg)', 10, 'nombre'], ['nbPieces', 'Pièces', 7, 'nombre'],
-  ['dimensions', 'Dimensions', 12], ['options', 'Options', 22], ['statutPaiement', 'Statut paiement', 13],
+  ['dimensions', 'Dimensions', 12], ['options', 'Options', 28], ['montantCalcule', 'Prix calculé (€)', 12, 'montant'],
+  ['codePromo', 'Offre (code promo)', 14], ['pourcentageRemise', 'Réduction (%)', 10, 'nombre'], ['remise', 'Réduction (€)', 11, 'montant'],
+  ['montant', 'Montant (€)', 11, 'montant'], ['montantPaye', 'Payé (€)', 11, 'montant'], ['reste', 'Reste (€)', 11, 'montant'],
+  ['statutPaiement', 'Statut paiement', 13],
   ['expediteur', 'Expéditeur', 20], ['expediteurTel', 'Tél. expéditeur', 15], ['pieceIdentite', 'Pièce d\'identité', 15],
   ['destinataire', 'Destinataire', 20], ['destinataireTel', 'Tél. destinataire', 16], ['destinataireAdresse', 'Adresse destinataire', 24],
   ['palette', 'Palette', 22], ['paletteStatut', 'Statut palette', 13],
@@ -57,7 +61,12 @@ export async function lignes(req, q) {
       numero: c.numero, code: c.code ?? '', envoi: c.envoi ?? c.numero, rang: `${c.rangEnvoi ?? 1}/${c.nbEnvoi ?? 1}`,
       depot: c.depot, destination: c.destination, ville: ville.get(c.destination) ?? '', statut: statut(c.statut),
       description: c.description ?? '', poidsKg: c.poidsKg, nbPieces: c.nbPieces ?? 1, dimensions: c.dimensions ?? '',
-      options: (c.options ?? []).map((o) => o.libelle).join(', '),
+      options: (c.options ?? []).map((o) => `${o.libelle} (${euros(o.montant ?? 0)})`).join(', '),
+      optionsDetail: (c.options ?? []).map((o) => ({ libelle: o.libelle, montant: o.montant ?? 0 })),
+      offre: c.codePromo ? `${c.codePromo} -${c.pourcentageRemise ?? 0}% (-${euros(c.remise)})` : '',
+      codePromo: c.codePromo ?? '', pourcentageRemise: c.codePromo ? c.pourcentageRemise ?? 0 : null, remise: c.codePromo ? c.remise ?? 0 : null,
+      montantCalcule: c.montantCalcule ?? c.montant ?? 0, montant: c.montant ?? 0, montantPaye: c.paiement?.recu ?? 0,
+      reste: r2(Math.max(0, (c.montant ?? 0) - (c.paiement?.recu ?? 0))),
       statutPaiement: LIBELLES_PAIEMENT[c.paiement?.statut] ?? c.paiement?.statut ?? '',
       expediteur: c.expediteur?.nom ?? '', expediteurTel: c.expediteur?.tel ?? '', pieceIdentite: c.expediteur?.pieceIdentite ?? '',
       destinataire: c.destinataire?.nom ?? '', destinataireTel: c.destinataire?.tel ?? '', destinataireAdresse: c.destinataire?.adresse ?? '',
@@ -73,12 +82,18 @@ export async function lignes(req, q) {
 const fuseau = () => process.env.FUSEAU ?? 'Europe/Paris';
 const dateFr = (d) => (d ? new Date(d).toLocaleString('fr-FR', { timeZone: fuseau(), day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 const nombreFr = (n) => (n == null || n === '' ? '' : String(n).replace('.', ','));
+const montantFr = (n) => (n == null || n === '' ? '' : Number(n).toFixed(2).replace('.', ','));
+/** Valeur d'une cellule CSV / PDF selon le type de colonne. */
+const formate = (v, type) => (type === 'date' ? dateFr(v) : type === 'montant' ? montantFr(v) : type ? nombreFr(v) : v);
 
-/** Totaux pour l'en-tête du PDF et la feuille Résumé. */
+const somme = (l, k) => r2(l.reduce((s, x) => s + (x[k] || 0), 0));
+
+/** Totaux pour l'aperçu, l'en-tête du PDF et la feuille Résumé. */
 function totaux(l) {
   return {
     colis: l.length, poids: r2(l.reduce((s, x) => s + (x.poidsKg || 0), 0)),
     palettes: new Set(l.map((x) => x.palette).filter(Boolean)).size, conteneurs: new Set(l.map((x) => x.conteneur).filter(Boolean)).size,
+    montant: somme(l, 'montant'), paye: somme(l, 'montantPaye'), reste: somme(l, 'reste'), remises: somme(l, 'remise'),
   };
 }
 
@@ -95,7 +110,7 @@ export function csv(l) {
     const t = String(v ?? '');
     return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
   };
-  const valeur = (ligne, [cle, , , type]) => (type === 'date' ? dateFr(ligne[cle]) : type ? nombreFr(ligne[cle]) : ligne[cle]);
+  const valeur = (ligne, [cle, , , type]) => formate(ligne[cle], type);
   const corps = [COLONNES.map(([, t]) => t), ...l.map((x) => COLONNES.map((c) => valeur(x, c)))].map((r) => r.map(champ).join(';')).join('\r\n');
   return `﻿${corps}\r\n`; // BOM : accents corrects à l'ouverture dans Excel
 }
@@ -165,7 +180,8 @@ export async function xlsx(req, l, q) {
   const t = totaux(l);
   wsR.columns = [{ width: 28 }, { width: 50 }];
   [['Export', `${params?.nomApplication || 'Gestion colis'} — ${req.entreprise?.nom ?? ''}`], ['Établi le', dateFr(new Date())], ['Filtres', descriptionFiltres(q)],
-    ['Colis', t.colis], ['Poids total (kg)', t.poids], ['Palettes', t.palettes], ['Conteneurs', t.conteneurs]].forEach(([a, b]) => { const r = wsR.addRow([a, b]); r.getCell(1).font = { bold: true }; });
+    ['Colis', t.colis], ['Poids total (kg)', t.poids], ['Palettes', t.palettes], ['Conteneurs', t.conteneurs],
+    ['Montant total (€)', t.montant], ['Payé (€)', t.paye], ['Reste à payer (€)', t.reste], ['Réductions accordées (€)', t.remises]].forEach(([a, b]) => { const r = wsR.addRow([a, b]); r.getCell(1).font = { bold: true }; });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -174,7 +190,8 @@ export async function xlsx(req, l, q) {
 /** Colonnes du PDF (paysage) : l'essentiel de chaque colis ; le détail complet est dans le CSV et l'Excel. */
 const COLONNES_PDF = [
   ['numero', 'Colis', 92], ['rang', 'Rang', 30], ['destination', 'Dest.', 34], ['statut', 'Statut', 56], ['expediteur', 'Expéditeur', 78],
-  ['destinataire', 'Destinataire', 84], ['poidsKg', 'Kg', 32, 'nombre'], ['statutPaiement', 'Paiement', 52],
+  ['destinataire', 'Destinataire', 84], ['poidsKg', 'Kg', 32, 'nombre'], ['options', 'Options', 80], ['offre', 'Offre', 62],
+  ['montant', 'Montant €', 44, 'montant'], ['montantPaye', 'Payé €', 44, 'montant'], ['statutPaiement', 'Paiement', 52],
   ['palette', 'Palette', 92], ['conteneur', 'Conteneur', 92], ['dateReception', 'Enregistré', 58, 'date'], ['dateDepart', 'Départ', 58, 'date'],
 ];
 
@@ -191,7 +208,7 @@ export async function pdf(req, l, q) {
   doc.font('Helvetica').fontSize(9).fillColor('#677085').text(`${req.entreprise?.nom ?? ''} · ${descriptionFiltres(q)} · établi le ${dateFr(new Date())}`);
   doc.moveDown(0.4);
   doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#1d2330')
-    .text(`${t.colis} colis · ${nombreFr(t.poids)} kg · ${t.palettes} palette(s) · ${t.conteneurs} conteneur(s)`);
+    .text(`${t.colis} colis · ${nombreFr(t.poids)} kg · ${t.palettes} palette(s) · ${t.conteneurs} conteneur(s) · montant ${euros(t.montant)} · payé ${euros(t.paye)} · reste ${euros(t.reste)}${t.remises ? ` · réductions ${euros(t.remises)}` : ''}`);
   doc.moveDown(0.6);
   const somme = COLONNES_PDF.reduce((s, c) => s + c[2], 0);
   const echelle = largeur / somme;
@@ -204,7 +221,7 @@ export async function pdf(req, l, q) {
     for (const c of cols) { doc.text(c.titre, x + 3, y + 4.5, { width: c.w - 6, lineBreak: false, ellipsis: true, align: c.type && c.type !== 'date' ? 'right' : 'left' }); x += c.w; }
     doc.y = y + 16;
   };
-  const valeur = (x, c) => (c.type === 'date' ? dateFr(x[c.k]).slice(0, 10) : c.type ? nombreFr(x[c.k]) : String(x[c.k] ?? ''));
+  const valeur = (x, c) => (c.type === 'date' ? dateFr(x[c.k]).slice(0, 10) : String(formate(x[c.k], c.type) ?? ''));
   ligneEntete();
   l.forEach((x, i) => {
     // Hauteur de la ligne selon le texte le plus long (un nom long passe sur 2 lignes sans chevaucher la suivante)
@@ -239,7 +256,7 @@ export async function pdf(req, l, q) {
 /** Nombre de colis montrés dans l'aperçu (l'export, lui, contient tous les colis). */
 const APERCU_MAX = 500;
 const CHAMPS_APERCU = ['numero', 'rang', 'depot', 'destination', 'ville', 'statut', 'description', 'poidsKg', 'expediteur', 'destinataire',
-  'statutPaiement', 'palette', 'conteneur', 'dateReception', 'dateDepart'];
+  'optionsDetail', 'codePromo', 'pourcentageRemise', 'remise', 'montant', 'montantPaye', 'statutPaiement', 'palette', 'conteneur', 'dateReception', 'dateDepart'];
 
 /** Aperçu avant téléchargement : totaux et liste des colis qui seront exportés (500 premiers). */
 export async function apercu(req, q) {
