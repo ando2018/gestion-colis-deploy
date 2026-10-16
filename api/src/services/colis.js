@@ -69,9 +69,12 @@ export async function receptionnerEnvoi(req, b) {
   if (!texte(b.expediteur?.nom) || !texte(b.expediteur?.tel)) throw requete('Nom et téléphone de l\'expéditeur obligatoires');
   if (!texte(b.destinataire?.nom) || !texte(b.destinataire?.tel)) throw requete('Nom et téléphone du destinataire obligatoires');
 
-  const lignes = Array.isArray(b.colis) && b.colis.length ? b.colis : [b];
+  const parLigne = Array.isArray(b.colis) && b.colis.length > 0;
+  const lignes = parLigne ? b.colis : [b];
   if (lignes.length > 50) throw requete('50 colis maximum par envoi');
-  const options = (b.options ?? []).filter((o) => texte(o.libelle)).map((o) => ({ libelle: texte(o.libelle), montant: r2(o.montant) }));
+  const lireOptions = (l) => (Array.isArray(l) ? l : []).filter((o) => texte(o?.libelle)).map((o) => ({ libelle: texte(o.libelle), montant: r2(o.montant) }));
+  // Options de l'envoi (ancienne saisie, avant les options par colis) : portées par le premier colis.
+  const optionsEnvoi = lireOptions(b.options);
   const motifMontant = texte(b.motifMontant);
   // Code promo : réduction en pourcentage sur le montant calculé de chaque colis (options comprises)
   const promo = texte(b.codePromo) ? await offres.verifierCode(b.codePromo) : null;
@@ -79,8 +82,8 @@ export async function receptionnerEnvoi(req, b) {
   const colisPrepares = lignes.map((l, i) => {
     const poidsKg = r2(l.poidsKg);
     if (!(poidsKg > 0)) throw requete(`Colis ${i + 1} : poids (kg) obligatoire`);
-    // Les options de l'envoi (emballage, assurance…) sont portées par le premier colis.
-    const opts = i === 0 ? options : [];
+    // Options du colis (emballage, assurance…) ; celles données pour tout l'envoi vont sur le premier colis.
+    const opts = [...(parLigne ? lireOptions(l.options) : []), ...(i === 0 ? optionsEnvoi : [])];
     const montantCalcule = r2(poidsKg * destination.tarifKg + opts.reduce((s, o) => s + o.montant, 0));
     const remise = promo ? r2(montantCalcule * promo.pourcentage / 100) : 0;
     const montantRemise = r2(montantCalcule - remise);

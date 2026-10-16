@@ -69,6 +69,7 @@ const vueLicence = (l) => (l ? { jeton: l.jeton, debut: l.debut, expireLe: l.exp
 const vue = async (e) => ({
   id: e._id, code: e.code, nom: e.nom, contact: e.contact, adresse: e.adresse, notes: e.notes, actif: e.actif,
   parDefaut: e.parDefaut, creeLe: e.createdAt, ...(await chiffres(e)),
+  pageConnexion: { video: e.pageConnexion?.video !== false, manuel: e.pageConnexion?.manuel !== false },
   licence: e.licence ? { ...vueLicence(e.licence), ...etatLicence(e.licence) } : { ...etatLicence(null), jeton: null },
   licences: (e.licences ?? []).slice(0, 10).map(vueLicence),
 });
@@ -102,6 +103,8 @@ const champsLibres = (b) => ({
   contact: { nom: texte(b.contact?.nom), email: texte(b.contact?.email).toLowerCase(), tel: texte(b.contact?.tel) },
   adresse: texte(b.adresse),
   notes: texte(b.notes),
+  // Page de connexion de l'entreprise : vidéo de présentation et manuel PDF (proposés sauf case décochée)
+  pageConnexion: { video: b.pageConnexion?.video !== false, manuel: b.pageConnexion?.manuel !== false },
 });
 
 function verifierAdmin(admin) {

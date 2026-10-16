@@ -20,11 +20,15 @@ import * as palettes from './services/palettes.js';
 import * as param from './services/parametrage.js';
 import * as stats from './services/statistiques.js';
 import * as formulaires from './services/formulaires.js';
+import * as manuel from './services/manuel.js';
 
 const { ADMIN, RECEPTION, CARISTE, CHEF_QUAI, CLIENT } = ROLES;
 const echapper = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export function creerApp() {
+  // Vidéo de présentation (api/presentation/video.py), proposée sur la page de connexion.
+  // Autre emplacement : PRESENTATION_VIDEO=chemin/vers/presentation.mp4 (le .srt à côté, même nom).
+  const video = path.resolve(process.env.PRESENTATION_VIDEO ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '../presentation/presentation.mp4'));
   const app = express();
   // Derrière un proxy (Nginx, IIS) : adresse https et IP réelles des en-têtes X-Forwarded-*
   app.set('trust proxy', 1);
@@ -116,6 +120,19 @@ export function creerApp() {
     const l = await param.logo();
     if (!l) return res.status(404).json({ erreur: 'Pas de logo' });
     res.set('Cache-Control', 'public, max-age=86400').type(l.type).send(l.octets);
+  }));
+
+  // Page de connexion d'une entreprise : vidéo de présentation (si le fichier est installé) et manuel PDF proposés ou non,
+  // selon le réglage de l'entreprise sur /plateforme. Sans entreprise (étape 1 de la connexion) : rien.
+  api.get('/page-connexion', async (req, res) => {
+    const e = await entrepriseActive(req.query.entreprise);
+    res.json({ video: !!e?.pageConnexion.video && fs.existsSync(video), manuel: !!e?.pageConnexion.manuel });
+  });
+  // Manuel d'utilisation PDF de l'entreprise : public, lien sur la page de connexion (si proposé pour cette entreprise).
+  api.get('/manuel/:entreprise', publique((req) => req.params.entreprise, async (req, res, e) => {
+    if (!e.pageConnexion.manuel) return res.status(404).json({ erreur: 'Manuel non proposé' });
+    const { nom, pdf } = await manuel.manuelPublic(e, origineRequete(req));
+    res.type('application/pdf').set('Content-Disposition', `inline; filename="${nom}"`).send(pdf);
   }));
 
   api.use(authentifier);
@@ -299,6 +316,19 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px so
 ${liste.map((c) => `<tr><td>${echapper(c.numero)}</td><td>${c.nbPieces}</td><td>${c.poidsKg} kg</td><td>${echapper(c.statut)}</td></tr>`).join('')}
 </table><p><small>Liste à jour au ${new Date().toLocaleString('fr-FR')}</small></p></body></html>`);
   }
+
+  // Vidéo de présentation (fichier déclaré plus haut) et ses sous-titres : /presentation.mp4?entreprise=<identifiant>,
+  // si la vidéo est proposée pour cette entreprise.
+  app.get('/presentation.mp4', async (req, res) => {
+    const e = await entrepriseActive(req.query.entreprise);
+    return e?.pageConnexion.video && fs.existsSync(video) ? res.sendFile(video, { maxAge: '1h' }) : res.status(404).end();
+  });
+  app.get('/presentation.vtt', (_req, res) => {
+    const srt = video.replace(/\.mp4$/i, '.srt');
+    if (!fs.existsSync(srt)) return res.status(404).end();
+    // SRT → WebVTT : en-tête et virgule des millisecondes remplacée par un point
+    res.type('text/vtt; charset=utf-8').send(`WEBVTT\n\n${fs.readFileSync(srt, 'utf8').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')}`);
+  });
 
   // Front Angular compilé (production) : web/dist/web/browser, ou le dossier indiqué par DOSSIER_WEB
   const front = process.env.DOSSIER_WEB

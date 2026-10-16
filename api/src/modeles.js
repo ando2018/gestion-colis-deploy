@@ -328,6 +328,8 @@ export const Entreprise = model('Entreprise', new Schema({
   licence: { type: JetonLicence, default: null },
   /** Jetons précédents (renouvellements), du plus récent au plus ancien. */
   licences: { type: [JetonLicence], default: [] },
+  /** Page de connexion de l'entreprise : vidéo de présentation et manuel PDF proposés ou non (réglé sur /plateforme). */
+  pageConnexion: { video: { type: Boolean, default: true }, manuel: { type: Boolean, default: true } },
 }, opts), 'entreprises');
 
 /** Compte de gestion de la plateforme (création et suivi des entreprises), distinct des comptes des entreprises. */

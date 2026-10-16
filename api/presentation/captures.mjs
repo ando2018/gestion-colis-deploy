@@ -45,8 +45,8 @@ const colis = [];
 for (const [i, [en, et, ee, dn, dt, dest]] of personnes.entries()) {
   const e = await appel(rec, 'POST', '/envois', {
     destination: dest, expediteur: { nom: en, tel: et, email: ee }, destinataire: { nom: dn, tel: dt, adresse: dest === 'ABJ' ? 'Cocody, Abidjan' : 'Plateau, Dakar' },
-    colis: [{ poidsKg: 8 + i * 3, description: ['Vêtements', 'Électroménager', 'Pièces auto', 'Alimentaire', 'Livres', 'Cosmétiques', 'Matériel informatique'][i] }],
-    options: i % 2 === 0 ? [{ libelle: 'Emballage renforcé', montant: 5 }] : [],
+    colis: [{ poidsKg: 8 + i * 3, description: ['Vêtements', 'Électroménager', 'Pièces auto', 'Alimentaire', 'Livres', 'Cosmétiques', 'Matériel informatique'][i],
+      options: i % 2 === 0 ? [{ libelle: 'Emballage renforcé', montant: 5 }] : [] }],
     codePromo: i % 3 === 0 ? 'BIENVENUE10' : '', offres: { accepte: true, email: ee }, paiement: { mode: 'ESPECES' },
   });
   colis.push(...(e.colis ?? []));
@@ -100,8 +100,8 @@ const session = async (email) => {
   await p.fill('input[name="ee"]', 'adama.cisse@exemple.fr'); await p.check('input[name="eo"]');
   await p.fill('input[name="dt"]', '+225 07 98 76 54 32'); await p.fill('input[name="dn"]', 'YAO Koffi'); await p.fill('input[name="da"]', 'Yopougon, Abidjan');
   await p.selectOption('select[name="dest"]', 'ABJ'); await p.locator('input[type=number][step="0.1"]').first().fill('15');
-  await p.click('.recap button.lien'); await p.locator('.recap .option input').nth(0).fill('Emballage renforcé');
-  await p.locator('.recap .option input').nth(1).fill('5');
+  await p.click('.ligne-colis .ajout-option'); await p.locator('.option-colis input').nth(0).fill('Emballage renforcé');
+  await p.locator('.option-colis input').nth(1).fill('5');
   await p.fill('input[name="promo"]', 'BIENVENUE10'); await p.click('.promo button:has-text("Appliquer")'); await p.waitForSelector('.promo-ok');
   await capture(p, '02-reception');
   await p.click('form.mise-en-page button.valider'); await p.waitForSelector('app-etiquette-colis .papier');

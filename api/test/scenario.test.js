@@ -1076,3 +1076,47 @@ test('offres : consentement, base clients, codes promo (validité, utilisations)
   ok(await appel(pf, 'PUT', '/api/plateforme/smtp', { actif: false }, null));
   smtp.serveur.close();
 });
+
+test('options par colis : chacune s’ajoute au prix de son colis ; les options de l’envoi (ancienne saisie) vont sur C1', async () => {
+  const agent = await connexion('reception@colis.local');
+  const e = ok(await appel(agent, 'POST', '/api/envois', {
+    destination: 'ABJ', expediteur: { nom: 'OPTION Awa', tel: '0611' }, destinataire: { nom: 'KOUASSI Jean', tel: '07' },
+    colis: [{ poidsKg: 10 }, { poidsKg: 5, options: [{ libelle: 'Assurance', montant: 7 }, { libelle: '', montant: 99 }] }],
+    paiement: { mode: 'ESPECES' },
+  }), 201);
+  const [c1, c2] = e.colis;
+  const tarif = c1.montantCalcule / c1.poidsKg;
+  assert.deepEqual(c1.options, [], 'C1 sans option');
+  assert.deepEqual(c2.options, [{ libelle: 'Assurance', montant: 7 }], 'option sans libellé ignorée');
+  assert.equal(c2.montant, Math.round((5 * tarif + 7) * 100) / 100, 'prix de C2 = poids × tarif + son option');
+  // Ancienne forme : options données pour tout l'envoi → premier colis, sans doublon pour un colis seul
+  const seul = ok(await appel(agent, 'POST', '/api/envois', {
+    destination: 'ABJ', expediteur: { nom: 'OPTION Awa', tel: '0611' }, destinataire: { nom: 'KOUASSI Jean', tel: '07' },
+    poidsKg: 2, options: [{ libelle: 'Emballage', montant: 4 }], paiement: { mode: 'ESPECES' },
+  }), 201);
+  assert.deepEqual(seul.colis[0].options, [{ libelle: 'Emballage', montant: 4 }]);
+});
+
+test('page de connexion : vidéo de présentation et manuel PDF affichés ou masqués pour chaque entreprise', async () => {
+  const pf = (await (await fetch(`${base}/api/plateforme/connexion`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'plateforme@colis.local', motDePasse: 'Colis2026!' }),
+  })).json()).jeton;
+  const code = 'DEM-000-000-001';
+  const ent = ok(await appel(pf, 'GET', '/api/plateforme/entreprises', null, null)).find((e) => e.code === code);
+  assert.deepEqual(ent.pageConnexion, { video: true, manuel: true }, 'affichés par défaut');
+  const page = async (c = code) => (await fetch(`${base}/api/page-connexion?entreprise=${c}`)).json();
+  assert.equal((await page()).manuel, true);
+  assert.deepEqual(await page(''), { video: false, manuel: false }, 'sans entreprise : rien');
+  assert.equal((await fetch(`${base}/api/manuel/${code}`)).status, 200, 'manuel public');
+  // Masqués pour cette entreprise : boutons absents, fichiers refusés
+  const m = ok(await appel(pf, 'PUT', `/api/plateforme/entreprises/${ent.id}`, { pageConnexion: { video: false, manuel: false } }, null));
+  assert.deepEqual(m.pageConnexion, { video: false, manuel: false });
+  assert.deepEqual(await page(), { video: false, manuel: false });
+  assert.equal((await fetch(`${base}/api/manuel/${code}`)).status, 404, 'manuel masqué : plus téléchargeable');
+  assert.equal((await fetch(`${base}/presentation.mp4?entreprise=${code}`)).status, 404, 'vidéo masquée');
+  // Une autre modification de la fiche garde le réglage
+  ok(await appel(pf, 'PUT', `/api/plateforme/entreprises/${ent.id}`, { notes: 'test' }, null));
+  assert.equal((await page()).manuel, false, 'réglage conservé');
+  ok(await appel(pf, 'PUT', `/api/plateforme/entreprises/${ent.id}`, { pageConnexion: { video: true, manuel: true } }, null));
+  assert.equal((await page()).manuel, true);
+});

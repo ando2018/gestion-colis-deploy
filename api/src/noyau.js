@@ -91,8 +91,12 @@ export async function entrepriseActive(code) {
   if (!c) return null;
   const memo = cacheEntreprises.get(c);
   if (memo && memo.expire > Date.now()) return memo.e;
-  const e = await Entreprise.findOne({ $or: [{ code: c }, { ancienCode: c }], actif: true }, { code: 1, nom: 1, base: 1, parDefaut: 1, licence: 1 }).lean();
-  const v = e ? { id: e._id, code: e.code, nom: e.nom, base: e.base, parDefaut: !!e.parDefaut, licence: e.licence ?? null } : null;
+  const e = await Entreprise.findOne({ $or: [{ code: c }, { ancienCode: c }], actif: true }, { code: 1, nom: 1, base: 1, parDefaut: 1, licence: 1, pageConnexion: 1 }).lean();
+  const v = e ? {
+    id: e._id, code: e.code, nom: e.nom, base: e.base, parDefaut: !!e.parDefaut, licence: e.licence ?? null,
+    // Page de connexion : vidéo et manuel proposés sauf si la plateforme les a masqués pour cette entreprise
+    pageConnexion: { video: e.pageConnexion?.video !== false, manuel: e.pageConnexion?.manuel !== false },
+  } : null;
   cacheEntreprises.set(c, { e: v, expire: Date.now() + 15000 });
   return v;
 }

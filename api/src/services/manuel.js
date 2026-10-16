@@ -238,8 +238,11 @@ export async function genererManuel({ entreprise, application, lien, admins = []
   doc.font('Helvetica-Bold').fontSize(11).fillColor(BLEU).text(lien, xa, doc.y + 2, { width: la, link: lien, underline: true });
   doc.font('Helvetica').fontSize(9.5).fillColor(GRIS).text("Identifiant de l'entreprise", xa, doc.y + 10);
   doc.font('Courier-Bold').fontSize(20).fillColor(TEXTE).text(entreprise.code, xa, doc.y + 2, { width: la, characterSpacing: 1 });
-  doc.font('Helvetica').fontSize(9.5).fillColor(GRIS).text(admins.length > 1 ? 'Administrateurs' : 'Administrateur', xa, doc.y + 10);
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(TEXTE).text(admins.join(', ') || '—', xa, doc.y + 2, { width: la });
+  // Manuel public (page de connexion) : sans les e-mails des administrateurs
+  if (admins.length) {
+    doc.font('Helvetica').fontSize(9.5).fillColor(GRIS).text(admins.length > 1 ? 'Administrateurs' : 'Administrateur', xa, doc.y + 10);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(TEXTE).text(admins.join(', '), xa, doc.y + 2, { width: la });
+  }
   doc.y = yAcces + hAcces + 14;
   paragraphe("Le code provisoire de connexion vous est envoyé dans un e-mail séparé : il n'est jamais écrit dans ce document. Conservez ce manuel : il reste valable, seul votre code personnel est secret.", { align: 'left' });
   doc.font('Helvetica').fontSize(9).fillColor(GRIS).text(`Document établi le ${new Date().toLocaleDateString('fr-FR')} pour ${entreprise.nom} (${entreprise.code}).`, MARGE, bas() - 10, { width: LARGEUR });
@@ -331,6 +334,11 @@ const nomFichier = (e) => `manuel-${e.code}.pdf`;
 /** PDF du manuel d'une entreprise (téléchargement depuis la plateforme). */
 export function manuelPdf(e, origine) {
   return dansEntreprise(contexte(e), async () => ({ nom: nomFichier(e), pdf: await genererManuel(await donnees(e, origine)) }));
+}
+
+/** PDF du manuel téléchargé depuis la page de connexion (déjà dans le contexte de l'entreprise) : sans les e-mails des administrateurs. */
+export async function manuelPublic(e, origine) {
+  return { nom: nomFichier(e), pdf: await genererManuel({ ...(await donnees(e, origine)), admins: [] }) };
 }
 
 /** Envoie le manuel en pièce jointe aux administrateurs de l'entreprise (ou aux adresses données). */
